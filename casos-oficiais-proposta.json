@@ -1,0 +1,222 @@
+{
+  "_leia_me": "Proposta de casos de teste oficiais para revisar com o professor. Cada caso confere só os VALORES (não o texto exato): cada linha de saidaEsperada precisa aparecer em ordem na saída do programa; maiúsculas e acentos são ignorados; números conferem pelo valor (8.5 aceita 8.50). Depois de aprovado, copie os exercícios para Extensao-Tutor-Socratico/material/casos-oficiais.json (só os campos entrada e saidaEsperada).",
+  "aula04-ex1": {
+    "suposicoes": ["Distância = 80 km/h × 35 min = 46,67 km; litros = distância / 12 = 3,89 L."],
+    "casos": [{ "entrada": "", "saidaEsperada": "3.89", "motivo": "Litros gastos na viagem." }]
+  },
+  "aula04-ex2": {
+    "suposicoes": ["Juros COMPOSTOS de 1% ao mês (500 × 1,01³ = 515,15). Com juros simples seria 515,00."],
+    "casos": [{ "entrada": "", "saidaEsperada": "515.15", "motivo": "Saldo após 3 meses." }]
+  },
+  "aula05-ex1": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "1.80", "saidaEsperada": "72.86", "motivo": "72,7 × 1,80 − 58." },
+      { "entrada": "1.60", "saidaEsperada": "58.32", "motivo": "72,7 × 1,60 − 58." }
+    ]
+  },
+  "aula05-ex2": {
+    "suposicoes": ["O programa lê primeiro o ano de nascimento e depois o ano atual."],
+    "casos": [
+      { "entrada": "2005\n2025", "saidaEsperada": "20", "motivo": "Idade de quem nasceu em 2005." },
+      { "entrada": "1990\n2026", "saidaEsperada": "36", "motivo": "Outro par de anos." }
+    ]
+  },
+  "aula05-ex3": {
+    "suposicoes": ["O programa mostra primeiro a comissão e depois o salário bruto."],
+    "casos": [
+      { "entrada": "5000", "saidaEsperada": "500\n1700", "motivo": "Comissão de 10% e salário bruto (1200 + 500)." },
+      { "entrada": "0", "saidaEsperada": "0\n1200", "motivo": "Sem vendas: só o salário base." }
+    ]
+  },
+  "aula05-ex4": {
+    "suposicoes": ["Números lidos um por linha (ou separados por espaço)."],
+    "casos": [
+      { "entrada": "7.5\n8\n9\n6.5", "saidaEsperada": "7.75", "motivo": "Média com resultado de 2 casas." },
+      { "entrada": "10\n9.5\n8.25\n7", "saidaEsperada": "8.69", "motivo": "Confere o arredondamento para 2 casas (8,6875)." }
+    ]
+  },
+  "aula05-ex5": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "144", "saidaEsperada": "12", "motivo": "Raiz exata." },
+      { "entrada": "2", "saidaEsperada": "1.41", "motivo": "Raiz não exata (pega quem usa int)." }
+    ]
+  },
+  "aula06-ex1": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "7.5", "saidaEsperada": "aprovado", "motivo": "Nota acima de 6." },
+      { "entrada": "5.9", "saidaEsperada": "reprovado", "motivo": "Nota abaixo de 6 (pega quem lê a nota como int)." },
+      { "entrada": "6", "saidaEsperada": "aprovado", "motivo": "Limite: nota igual a 6 aprova (pega quem usa > em vez de >=)." }
+    ]
+  },
+  "aula06-ex2": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "7", "saidaEsperada": "impar", "motivo": "Número ímpar." },
+      { "entrada": "10", "saidaEsperada": "par", "motivo": "Número par." },
+      { "entrada": "0", "saidaEsperada": "par", "motivo": "Zero é par." }
+    ]
+  },
+  "aula06-ex3": {
+    "suposicoes": ["Coeficientes lidos na ordem a, b, c.", "Não há caso para delta negativo porque a mensagem varia de aluno para aluno."],
+    "casos": [
+      { "entrada": "1\n-7\n12", "saidaEsperada": "4", "motivo": "x² − 7x + 12 = 0: uma das raízes." },
+      { "entrada": "1\n-7\n12", "saidaEsperada": "3", "motivo": "A outra raiz." }
+    ]
+  },
+  "aula07-ex1": {
+    "suposicoes": ["A opção 1 do menu é a verificação de par/ímpar (a ordem do enunciado)."],
+    "casos": [
+      { "entrada": "1\n8", "saidaEsperada": "par", "motivo": "Opção 1 com número par." },
+      { "entrada": "1\n7", "saidaEsperada": "impar", "motivo": "Opção 1 com número ímpar." }
+    ]
+  },
+  "aula07-ex3": {
+    "suposicoes": ["Entrada no formato número-operador-número, sem espaços (ex.: 5+8)."],
+    "casos": [
+      { "entrada": "5+8", "saidaEsperada": "13", "motivo": "Soma." },
+      { "entrada": "9-12", "saidaEsperada": "-3", "motivo": "Subtração com resultado negativo." },
+      { "entrada": "6*7", "saidaEsperada": "42", "motivo": "Multiplicação." },
+      { "entrada": "20/4", "saidaEsperada": "5", "motivo": "Divisão." }
+    ]
+  },
+  "aula08-ex1": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "", "saidaEsperada": "1\n100\n100\n1", "motivo": "Conta de 1 a 100 e depois de 100 a 1." }]
+  },
+  "aula08-ex2": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "", "saidaEsperada": "3\n6\n9\n321", "motivo": "Começa em 3 e o último múltiplo de 3 até 322 é 321." }]
+  },
+  "aula08-ex3": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "", "saidaEsperada": "240\n242\n728\n730", "motivo": "Inclui 240 e 730 (inclusive)." }]
+  },
+  "aula08-ex4": {
+    "suposicoes": ["Um número por linha."],
+    "casos": [{ "entrada": "11\n12\n13\n14\n15\n16\n17\n18\n19\n20", "saidaEsperada": "121\n144\n361\n400", "motivo": "Quadrados do 1º, 2º, 9º e 10º números." }]
+  },
+  "aula08-ex5": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "3\n5\n0", "saidaEsperada": "9\n25", "motivo": "Mostra os quadrados e PARA ao digitar 0." },
+      { "entrada": "-2", "saidaEsperada": "", "motivo": "Só confere que o programa termina ao digitar um negativo (sem laço infinito)." }
+    ]
+  },
+  "aula08-ex6": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "5", "saidaEsperada": "120", "motivo": "5! = 120." },
+      { "entrada": "10", "saidaEsperada": "3628800", "motivo": "10! (ainda cabe em int)." },
+      { "entrada": "0", "saidaEsperada": "1", "motivo": "Caso especial: 0! = 1." }
+    ]
+  },
+  "aula09-ex1": {
+    "suposicoes": ["Para cada aluno: lê as 2 notas e mostra a média antes de passar ao próximo.", "A primeira nota digitada (11) é inválida e deve ser pedida de novo."],
+    "casos": [{ "entrada": "11\n8\n7\n10\n10\n6\n4\n9\n8\n5\n5", "saidaEsperada": "7.5\n10\n5\n8.5\n5", "motivo": "Médias dos 5 alunos; o 11 é rejeitado pela validação." }]
+  },
+  "aula09-ex2": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "600\n700\n800\n1500", "saidaEsperada": "3", "motivo": "3 valores válidos antes do 1500." },
+      { "entrada": "499", "saidaEsperada": "0", "motivo": "O primeiro valor já está fora da faixa." }
+    ]
+  },
+  "aula10-ex1": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "", "saidaEsperada": "1\n100\n100\n1", "motivo": "Conta de 1 a 100 e depois de 100 a 1." }]
+  },
+  "aula10-ex2": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "", "saidaEsperada": "5\n10\n495\n500", "motivo": "Começa em 5 e termina em 500." }]
+  },
+  "aula10-ex3": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "", "saidaEsperada": "240\n242\n728\n730", "motivo": "Inclui 240 e 730 (inclusive)." }]
+  },
+  "aula10-ex4": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "5", "saidaEsperada": "120", "motivo": "5! = 120." },
+      { "entrada": "10", "saidaEsperada": "3628800", "motivo": "10!." },
+      { "entrada": "0", "saidaEsperada": "1", "motivo": "Caso especial: 0! = 1." }
+    ]
+  },
+  "aula10-ex5": {
+    "suposicoes": ["Um número por linha."],
+    "casos": [{ "entrada": "11\n12\n13\n14\n15\n16\n17\n18\n19\n20", "saidaEsperada": "121\n144\n361\n400", "motivo": "Quadrados do 1º, 2º, 9º e 10º números." }]
+  },
+  "aula10-ex6": {
+    "suposicoes": ["n é a quantidade de termos, começando em t0 = 0."],
+    "casos": [{ "entrada": "10", "saidaEsperada": "0\n1\n1\n2\n3\n5\n8\n13\n21\n34", "motivo": "Os 10 primeiros termos." }]
+  },
+  "aula10-ex8": {
+    "suposicoes": [],
+    "casos": [
+      { "entrada": "4", "saidaEsperada": "####\n####\n####\n####", "motivo": "Quadrado 4×4." },
+      { "entrada": "1", "saidaEsperada": "#", "motivo": "Tamanho mínimo." }
+    ]
+  },
+  "aula11-ex1": {
+    "suposicoes": ["Lê os 5 valores do vetor A e depois os 5 do vetor B."],
+    "casos": [{ "entrada": "1\n2\n3\n4\n5\n10\n20\n30\n40\n50", "saidaEsperada": "11\n22\n33\n44\n55", "motivo": "Vetor soma, na ordem." }]
+  },
+  "aula11-ex2": {
+    "suposicoes": ["Mostra o vetor B (os quadrados) na ordem."],
+    "casos": [{ "entrada": "11\n12\n13\n14\n15\n16\n17\n18\n19\n20", "saidaEsperada": "121\n144\n169\n196\n225\n256\n289\n324\n361\n400", "motivo": "Quadrados de 11 a 20 (valores que não se confundem com os números das mensagens)." }]
+  },
+  "aula12-ex1": {
+    "suposicoes": ["A matriz é mostrada linha por linha, com os números separados por espaço ou tabulação."],
+    "casos": [{ "entrada": "", "saidaEsperada": "1 0 0 0 0\n0 1 0 0 0\n0 0 1 0 0\n0 0 0 1 0\n0 0 0 0 1", "motivo": "Matriz identidade 5×5." }]
+  },
+  "aula12-ex2": {
+    "suposicoes": ["Mostra primeiro a soma da diagonal principal e depois a da secundária."],
+    "casos": [{ "entrada": "1 2 3\n4 5 6\n7 8 10", "saidaEsperada": "16\n15", "motivo": "Principal 1+5+10 = 16; secundária 3+5+7 = 15." }]
+  },
+  "aula12-ex3": {
+    "suposicoes": ["Só o maior valor é conferido: a posição pode começar em 0 ou em 1."],
+    "casos": [{ "entrada": "1 2 3 4 5\n6 7 8 9 10\n11 99 13 14 15\n16 17 18 19 20\n21 22 23 24 25", "saidaEsperada": "99", "motivo": "Maior valor da matriz." }]
+  },
+  "aula13-ex1": {
+    "suposicoes": ["Um nome por linha."],
+    "casos": [{ "entrada": "Ana\nBruno\nCarla\nDaniel\nEduarda\nFelipe\nGabriela\nHenrique\nIsabela\nJoao", "saidaEsperada": "Ana\nBruno\nCarla\nDaniel\nEduarda\nFelipe\nGabriela\nHenrique\nIsabela\nJoao", "motivo": "Os 10 nomes, na ordem." }]
+  },
+  "aula13-ex2": {
+    "suposicoes": ["Para cada funcionário: nome em uma linha e salário na seguinte.", "A folha mostra cada nome seguido do novo salário."],
+    "casos": [{ "entrada": "Ana\n1000\nBruno\n2000\nCarla\n1500\nDaniel\n3000\nEduarda\n2500", "saidaEsperada": "Ana\n1080\nBruno\n2160\nCarla\n1620\nDaniel\n3240\nEduarda\n2700", "motivo": "Aumento de 8%; também testa o buffer ao misturar fgets e scanf." }]
+  },
+  "aula13-ex4": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "Ana\nBia\nCarlos", "saidaEsperada": "", "motivo": "Só confere que o programa aceita \"Carlos\" e termina (rejeita os nomes curtos sem travar)." }]
+  },
+  "aula13-ex5": {
+    "suposicoes": ["As contagens são mostradas na ordem a, e, i, o, u."],
+    "casos": [{ "entrada": "programacao em c e divertida", "saidaEsperada": "4\n3\n2\n2\n0", "motivo": "a=4, e=3, i=2, o=2, u=0." }]
+  },
+  "aula13-ex6": {
+    "suposicoes": ["Lê o nome e depois o sobrenome."],
+    "casos": [{ "entrada": "Joao\nSilva", "saidaEsperada": "Silva, Joao", "motivo": "Formato pedido no enunciado." }]
+  },
+  "aula13-ex7": {
+    "suposicoes": ["Sigla digitada em maiúsculas."],
+    "casos": [
+      { "entrada": "SP", "saidaEsperada": "Sao Paulo", "motivo": "Acentos são ignorados na comparação." },
+      { "entrada": "RS", "saidaEsperada": "Rio Grande do Sul", "motivo": "Região Sul." },
+      { "entrada": "PR", "saidaEsperada": "Parana", "motivo": "Região Sul." }
+    ]
+  },
+  "aula19-ex4": {
+    "suposicoes": ["Só os valores dobrados são conferidos (os endereços mudam a cada execução)."],
+    "casos": [{ "entrada": "11\n12\n13\n14\n15", "saidaEsperada": "22\n24\n26\n28\n30", "motivo": "Valores multiplicados por 2, na ordem." }]
+  },
+  "aula19-ex6": {
+    "suposicoes": [],
+    "casos": [{ "entrada": "7", "saidaEsperada": "14\n21\n28", "motivo": "Dobro, triplo e quádruplo de 7." }]
+  },
+  "aula20-ex1": {
+    "suposicoes": ["Lê o tamanho e depois os valores."],
+    "casos": [{ "entrada": "4\n51\n62\n73\n84", "saidaEsperada": "51\n62\n73\n84", "motivo": "Os 4 valores lidos, na ordem." }]
+  }
+}

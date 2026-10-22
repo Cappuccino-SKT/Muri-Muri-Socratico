@@ -1,0 +1,340 @@
+{
+  "aula04-ex1": [
+    {
+      "entrada": "",
+      "saidaEsperada": "3.89"
+    }
+  ],
+  "aula04-ex2": [
+    {
+      "entrada": "",
+      "saidaEsperada": "515.15"
+    }
+  ],
+  "aula05-ex1": [
+    {
+      "entrada": "1.80",
+      "saidaEsperada": "72.86"
+    },
+    {
+      "entrada": "1.60",
+      "saidaEsperada": "58.32"
+    }
+  ],
+  "aula05-ex2": [
+    {
+      "entrada": "2005\n2025",
+      "saidaEsperada": "20"
+    },
+    {
+      "entrada": "1990\n2026",
+      "saidaEsperada": "36"
+    }
+  ],
+  "aula05-ex3": [
+    {
+      "entrada": "5000",
+      "saidaEsperada": "500\n1700"
+    },
+    {
+      "entrada": "0",
+      "saidaEsperada": "0\n1200"
+    }
+  ],
+  "aula05-ex4": [
+    {
+      "entrada": "7.5\n8\n9\n6.5",
+      "saidaEsperada": "7.75"
+    },
+    {
+      "entrada": "10\n9.5\n8.25\n7",
+      "saidaEsperada": "8.69"
+    }
+  ],
+  "aula05-ex5": [
+    {
+      "entrada": "144",
+      "saidaEsperada": "12"
+    },
+    {
+      "entrada": "2",
+      "saidaEsperada": "1.41"
+    }
+  ],
+  "aula06-ex1": [
+    {
+      "entrada": "7.5",
+      "saidaEsperada": "aprovado"
+    },
+    {
+      "entrada": "5.9",
+      "saidaEsperada": "reprovado"
+    },
+    {
+      "entrada": "6",
+      "saidaEsperada": "aprovado"
+    }
+  ],
+  "aula06-ex2": [
+    {
+      "entrada": "7",
+      "saidaEsperada": "impar"
+    },
+    {
+      "entrada": "10",
+      "saidaEsperada": "par"
+    },
+    {
+      "entrada": "0",
+      "saidaEsperada": "par"
+    }
+  ],
+  "aula06-ex3": [
+    {
+      "entrada": "1\n-7\n12",
+      "saidaEsperada": "4"
+    },
+    {
+      "entrada": "1\n-7\n12",
+      "saidaEsperada": "3"
+    }
+  ],
+  "aula07-ex1": [
+    {
+      "entrada": "1\n8",
+      "saidaEsperada": "par"
+    },
+    {
+      "entrada": "1\n7",
+      "saidaEsperada": "impar"
+    }
+  ],
+  "aula07-ex3": [
+    {
+      "entrada": "5+8",
+      "saidaEsperada": "13"
+    },
+    {
+      "entrada": "9-12",
+      "saidaEsperada": "-3"
+    },
+    {
+      "entrada": "6*7",
+      "saidaEsperada": "42"
+    },
+    {
+      "entrada": "20/4",
+      "saidaEsperada": "5"
+    }
+  ],
+  "aula08-ex1": [
+    {
+      "entrada": "",
+      "saidaEsperada": "1\n100\n100\n1"
+    }
+  ],
+  "aula08-ex2": [
+    {
+      "entrada": "",
+      "saidaEsperada": "3\n6\n9\n321"
+    }
+  ],
+  "aula08-ex3": [
+    {
+      "entrada": "",
+      "saidaEsperada": "240\n242\n728\n730"
+    }
+  ],
+  "aula08-ex4": [
+    {
+      "entrada": "11\n12\n13\n14\n15\n16\n17\n18\n19\n20",
+      "saidaEsperada": "121\n144\n361\n400"
+    }
+  ],
+  "aula08-ex5": [
+    {
+      "entrada": "3\n5\n0",
+      "saidaEsperada": "9\n25"
+    },
+    {
+      "entrada": "-2",
+      "saidaEsperada": ""
+    }
+  ],
+  "aula08-ex6": [
+    {
+      "entrada": "5",
+      "saidaEsperada": "120"
+    },
+    {
+      "entrada": "10",
+      "saidaEsperada": "3628800"
+    },
+    {
+      "entrada": "0",
+      "saidaEsperada": "1"
+    }
+  ],
+  "aula09-ex1": [
+    {
+      "entrada": "11\n8\n7\n10\n10\n6\n4\n9\n8\n5\n5",
+      "saidaEsperada": "7.5\n10\n5\n8.5\n5"
+    }
+  ],
+  "aula09-ex2": [
+    {
+      "entrada": "600\n700\n800\n1500",
+      "saidaEsperada": "3"
+    },
+    {
+      "entrada": "499",
+      "saidaEsperada": "0"
+    }
+  ],
+  "aula10-ex1": [
+    {
+      "entrada": "",
+      "saidaEsperada": "1\n100\n100\n1"
+    }
+  ],
+  "aula10-ex2": [
+    {
+      "entrada": "",
+      "saidaEsperada": "5\n10\n495\n500"
+    }
+  ],
+  "aula10-ex3": [
+    {
+      "entrada": "",
+      "saidaEsperada": "240\n242\n728\n730"
+    }
+  ],
+  "aula10-ex4": [
+    {
+      "entrada": "5",
+      "saidaEsperada": "120"
+    },
+    {
+      "entrada": "10",
+      "saidaEsperada": "3628800"
+    },
+    {
+      "entrada": "0",
+      "saidaEsperada": "1"
+    }
+  ],
+  "aula10-ex5": [
+    {
+      "entrada": "11\n12\n13\n14\n15\n16\n17\n18\n19\n20",
+      "saidaEsperada": "121\n144\n361\n400"
+    }
+  ],
+  "aula10-ex6": [
+    {
+      "entrada": "10",
+      "saidaEsperada": "0\n1\n1\n2\n3\n5\n8\n13\n21\n34"
+    }
+  ],
+  "aula10-ex8": [
+    {
+      "entrada": "4",
+      "saidaEsperada": "####\n####\n####\n####"
+    },
+    {
+      "entrada": "1",
+      "saidaEsperada": "#"
+    }
+  ],
+  "aula11-ex1": [
+    {
+      "entrada": "1\n2\n3\n4\n5\n10\n20\n30\n40\n50",
+      "saidaEsperada": "11\n22\n33\n44\n55"
+    }
+  ],
+  "aula11-ex2": [
+    {
+      "entrada": "11\n12\n13\n14\n15\n16\n17\n18\n19\n20",
+      "saidaEsperada": "121\n144\n169\n196\n225\n256\n289\n324\n361\n400"
+    }
+  ],
+  "aula12-ex1": [
+    {
+      "entrada": "",
+      "saidaEsperada": "1 0 0 0 0\n0 1 0 0 0\n0 0 1 0 0\n0 0 0 1 0\n0 0 0 0 1"
+    }
+  ],
+  "aula12-ex2": [
+    {
+      "entrada": "1 2 3\n4 5 6\n7 8 10",
+      "saidaEsperada": "16\n15"
+    }
+  ],
+  "aula12-ex3": [
+    {
+      "entrada": "1 2 3 4 5\n6 7 8 9 10\n11 99 13 14 15\n16 17 18 19 20\n21 22 23 24 25",
+      "saidaEsperada": "99"
+    }
+  ],
+  "aula13-ex1": [
+    {
+      "entrada": "Ana\nBruno\nCarla\nDaniel\nEduarda\nFelipe\nGabriela\nHenrique\nIsabela\nJoao",
+      "saidaEsperada": "Ana\nBruno\nCarla\nDaniel\nEduarda\nFelipe\nGabriela\nHenrique\nIsabela\nJoao"
+    }
+  ],
+  "aula13-ex2": [
+    {
+      "entrada": "Ana\n1000\nBruno\n2000\nCarla\n1500\nDaniel\n3000\nEduarda\n2500",
+      "saidaEsperada": "Ana\n1080\nBruno\n2160\nCarla\n1620\nDaniel\n3240\nEduarda\n2700"
+    }
+  ],
+  "aula13-ex4": [
+    {
+      "entrada": "Ana\nBia\nCarlos",
+      "saidaEsperada": ""
+    }
+  ],
+  "aula13-ex5": [
+    {
+      "entrada": "programacao em c e divertida",
+      "saidaEsperada": "4\n3\n2\n2\n0"
+    }
+  ],
+  "aula13-ex6": [
+    {
+      "entrada": "Joao\nSilva",
+      "saidaEsperada": "Silva, Joao"
+    }
+  ],
+  "aula13-ex7": [
+    {
+      "entrada": "SP",
+      "saidaEsperada": "Sao Paulo"
+    },
+    {
+      "entrada": "RS",
+      "saidaEsperada": "Rio Grande do Sul"
+    },
+    {
+      "entrada": "PR",
+      "saidaEsperada": "Parana"
+    }
+  ],
+  "aula19-ex4": [
+    {
+      "entrada": "11\n12\n13\n14\n15",
+      "saidaEsperada": "22\n24\n26\n28\n30"
+    }
+  ],
+  "aula19-ex6": [
+    {
+      "entrada": "7",
+      "saidaEsperada": "14\n21\n28"
+    }
+  ],
+  "aula20-ex1": [
+    {
+      "entrada": "4\n51\n62\n73\n84",
+      "saidaEsperada": "51\n62\n73\n84"
+    }
+  ]
+}

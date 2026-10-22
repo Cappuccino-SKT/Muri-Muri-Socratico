@@ -1,0 +1,293 @@
+{
+  "name": "tutor-socratico-c",
+  "displayName": "Tutor Socrático – Programação em C",
+  "description": "Tutor de IA para Fundamentos de Programação em C: ajuda com perguntas e pistas, sem entregar a solução, e indica a videoaula certa para cada dúvida.",
+  "version": "0.5.0",
+  "publisher": "tutor-socratico",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Education"
+  ],
+  "keywords": [
+    "c",
+    "tutor",
+    "educação",
+    "socrático",
+    "copilot"
+  ],
+  "activationEvents": [
+    "onLanguage:c"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "tutor-socratico.tutor",
+        "name": "tutor",
+        "fullName": "Tutor Socrático",
+        "description": "Pergunte sobre seu exercício em C. Eu ajudo com perguntas, sem entregar a resposta.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "verificar",
+            "description": "Revisar o código aberto (e o exercício) e apontar onde olhar, sem corrigir"
+          },
+          {
+            "name": "explicar",
+            "description": "Explicar o seu código com as suas palavras (depois que ele funcionar)"
+          },
+          {
+            "name": "quiz",
+            "description": "Quiz rápido de revisão (ex.: /quiz aula 11)"
+          },
+          {
+            "name": "depurar",
+            "description": "Aprender a encontrar o erro com o depurador ou printf"
+          },
+          {
+            "name": "teste",
+            "description": "Entender por que um caso de teste não passou"
+          },
+          {
+            "name": "erro",
+            "description": "Explicar um erro ou aviso do compilador no arquivo aberto"
+          },
+          {
+            "name": "pista",
+            "description": "Pedir uma pista sobre o código aberto"
+          },
+          {
+            "name": "video",
+            "description": "Descobrir qual videoaula assistir sobre um assunto"
+          },
+          {
+            "name": "conceito",
+            "description": "Entender um conceito da disciplina (ex.: ponteiros, strcmp)"
+          }
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tutorSocratico",
+          "title": "Tutor Socrático",
+          "icon": "media/tutor.svg"
+        }
+      ]
+    },
+    "views": {
+      "tutorSocratico": [
+        {
+          "type": "webview",
+          "id": "tutorSocratico.exercicio",
+          "name": "Exercício"
+        },
+        {
+          "id": "tutorSocratico.progresso",
+          "name": "Progresso"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tutorSocratico.verificarCodigo",
+        "title": "Verificar meu código com o tutor",
+        "category": "Tutor Socrático",
+        "icon": "$(mortar-board)"
+      },
+      {
+        "command": "tutorSocratico.perguntar",
+        "title": "Perguntar ao tutor",
+        "category": "Tutor Socrático",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "tutorSocratico.rodarTestes",
+        "title": "Rodar os casos de teste do exercício",
+        "category": "Tutor Socrático",
+        "icon": "$(beaker)"
+      },
+      {
+        "command": "tutorSocratico.pistaSobreTeste",
+        "title": "Pedir uma pista sobre um caso de teste",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.informarExercicio",
+        "title": "Informar o exercício deste arquivo",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.alternarModoAprendizado",
+        "title": "Ligar/desligar o modo aprendizado (sem sugestões automáticas)",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.pedirPista",
+        "title": "Pedir uma pista ao Tutor Socrático",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.verificarArquivo",
+        "title": "Verificar o arquivo C com o GCC",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.escolherExercicio",
+        "title": "Escolher exercício da lista da aula",
+        "category": "Tutor Socrático",
+        "icon": "$(list-selection)"
+      },
+      {
+        "command": "tutorSocratico.abrirExercicio",
+        "title": "Abrir exercício",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.alternarConcluido",
+        "title": "Marcar/desmarcar exercício como concluído",
+        "category": "Tutor Socrático",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "tutorSocratico.explicarCodigo",
+        "title": "Explicar meu código ao tutor",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.quiz",
+        "title": "Quiz rápido de revisão da aula",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.depurar",
+        "title": "Depurar com a ajuda do tutor",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.abrirVideo",
+        "title": "Assistir à videoaula",
+        "category": "Tutor Socrático"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tutorSocratico.verificarCodigo",
+          "when": "editorLangId == c",
+          "group": "navigation@-10"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "tutorSocratico.verificarCodigo",
+          "when": "editorLangId == c",
+          "group": "navigation@99"
+        },
+        {
+          "command": "tutorSocratico.pedirPista",
+          "when": "editorLangId == c",
+          "group": "navigation@100"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "tutorSocratico.pistaSobreTeste",
+          "when": "false"
+        },
+        {
+          "command": "tutorSocratico.rodarTestes",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.verificarCodigo",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.pedirPista",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.verificarArquivo",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.abrirExercicio",
+          "when": "false"
+        },
+        {
+          "command": "tutorSocratico.abrirVideo",
+          "when": "false"
+        },
+        {
+          "command": "tutorSocratico.alternarConcluido",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "tutorSocratico.escolherExercicio",
+          "when": "view == tutorSocratico.progresso",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tutorSocratico.alternarConcluido",
+          "when": "view == tutorSocratico.progresso && viewItem =~ /^exercicio/",
+          "group": "inline"
+        }
+      ]
+    },
+    "configurationDefaults": {
+      "[c]": {
+        "editor.inlineSuggest.enabled": false
+      }
+    },
+    "configuration": {
+      "title": "Tutor Socrático",
+      "properties": {
+        "tutorSocratico.perguntarExercicio": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ao abrir um arquivo .c pela primeira vez, pergunta se ele é um exercício e pede o enunciado."
+        },
+        "tutorSocratico.verificarAoSalvar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ao salvar um arquivo .c, verifica erros e avisos com o GCC e mostra uma lâmpada para pedir uma pista ao tutor."
+        },
+        "tutorSocratico.caminhoGcc": {
+          "type": "string",
+          "default": "gcc",
+          "description": "Caminho ou nome do executável do GCC usado na verificação."
+        },
+        "tutorSocratico.dicasOffline": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostra dicas sobre erros clássicos de iniciantes enquanto você digita (sem IA, sem internet) e traduz as mensagens do GCC para o português."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && node ./out/test/testeLocal.js",
+    "package": "npm run compile && vsce package --allow-missing-repository",
+    "test:integracao": "npm run compile && node ./out/test/rodarIntegracao.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "~1.100.0",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^4.0.0",
+    "typescript": "~5.9.0"
+  }
+}

@@ -1,0 +1,20 @@
+# Livros comerciais: não podem ser redistribuídos
+Livro-Usado/
+
+# Originais do professor (slides em PDF e transcrições brutas): ficam só na máquina local
+Material-Ensino-Não-Verificado/
+Transcrição-Não-Verificadas/
+
+# Arquivo pessoal
+Atalhos-VScode.pdf
+
+# Extensão: dependências, código compilado e pacotes gerados
+node_modules/
+Extensao-Tutor-Socratico/out/
+*.vsix
+.vscode-test/
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
