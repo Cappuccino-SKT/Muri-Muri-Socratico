@@ -5,3 +5,4 @@ node_modules/**
 .vscode/**
 tsconfig.json
 *.vsix
+package-lock.json

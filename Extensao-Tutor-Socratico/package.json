@@ -3,8 +3,25 @@
   "displayName": "Tutor Socrático – Programação em C",
   "description": "Tutor de IA para Fundamentos de Programação em C: ajuda com perguntas e pistas, sem entregar a solução, e indica a videoaula certa para cada dúvida.",
   "version": "0.5.0",
-  "publisher": "tutor-socratico",
-  "license": "UNLICENSED",
+  "publisher": "Muri-Muri-Socratico",
+  "author": {
+    "name": "FelipeSKT"
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "icon": "media/icone.png",
+  "preview": true,
+  "galleryBanner": {
+    "color": "#1d6b57",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FelipeSKT/Tutor-Socratico.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FelipeSKT/Tutor-Socratico/issues"
+  },
+  "homepage": "https://github.com/FelipeSKT/Tutor-Socratico/tree/main/Extensao-Tutor-Socratico#readme",
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -280,7 +297,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node ./out/test/testeLocal.js",
-    "package": "npm run compile && vsce package --allow-missing-repository",
+    "package": "npm run compile && vsce package --baseContentUrl https://github.com/FelipeSKT/Tutor-Socratico/blob/main/Extensao-Tutor-Socratico --baseImagesUrl https://github.com/FelipeSKT/Tutor-Socratico/raw/main/Extensao-Tutor-Socratico",
     "test:integracao": "npm run compile && node ./out/test/rodarIntegracao.js"
   },
   "devDependencies": {
