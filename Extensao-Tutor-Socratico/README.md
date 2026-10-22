@@ -66,7 +66,7 @@ Os identificadores seguem o formato `aulaNN-exM` (ex.: `aula05-ex2`).
 | `editor.inlineSuggest.enabled` (para C) | `false` | Sugestões automáticas de código nos arquivos C (modo aprendizado). |
 
 ## Versão de testes
-Esta extensão está em **pré-visualização**: ela já funciona, mas ainda vai receber melhorias. Sugestões e problemas podem ser enviados em [Issues](https://github.com/FelipeSKT/Tutor-Socratico/issues).
+Esta extensão está em **pré-visualização**: ela já funciona, mas ainda vai receber melhorias. Sugestões e problemas podem ser enviados em [Issues](https://github.com/FelipeSKT/Muri-Muri-Socratico/issues).
 
 ## Licença
 O código da extensão está sob a licença MIT. O material de aula incluído (baseado nos slides e nas videoaulas do Prof. Muriel de Souza Godoi) pode ser usado com a extensão para estudar, mas não pode ser redistribuído separadamente sem autorização. Veja o arquivo [LICENSE](LICENSE).

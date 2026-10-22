@@ -16,12 +16,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/FelipeSKT/Tutor-Socratico.git"
+    "url": "https://github.com/FelipeSKT/Muri-Muri-Socratico.git"
   },
   "bugs": {
-    "url": "https://github.com/FelipeSKT/Tutor-Socratico/issues"
+    "url": "https://github.com/FelipeSKT/Muri-Muri-Socratico/issues"
   },
-  "homepage": "https://github.com/FelipeSKT/Tutor-Socratico/tree/main/Extensao-Tutor-Socratico#readme",
+  "homepage": "https://github.com/FelipeSKT/Muri-Muri-Socratico/tree/main/Extensao-Tutor-Socratico#readme",
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -297,7 +297,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node ./out/test/testeLocal.js",
-    "package": "npm run compile && vsce package --baseContentUrl https://github.com/FelipeSKT/Tutor-Socratico/blob/main/Extensao-Tutor-Socratico --baseImagesUrl https://github.com/FelipeSKT/Tutor-Socratico/raw/main/Extensao-Tutor-Socratico",
+    "package": "npm run compile && vsce package --baseContentUrl https://github.com/FelipeSKT/Muri-Muri-Socratico/blob/main/Extensao-Tutor-Socratico --baseImagesUrl https://github.com/FelipeSKT/Muri-Muri-Socratico/raw/main/Extensao-Tutor-Socratico",
     "test:integracao": "npm run compile && node ./out/test/rodarIntegracao.js"
   },
   "devDependencies": {
