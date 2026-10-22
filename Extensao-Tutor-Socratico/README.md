@@ -1,6 +1,6 @@
-# Tutor Socrático – Programação em C
+# Muri-Muri Socratico
 
-Tutor para a disciplina **Fundamentos de Programação em C**. Ele ajuda você a resolver os exercícios **fazendo perguntas e dando pistas, sem entregar a resposta**, explica os erros do compilador em português, testa seu programa e indica **qual videoaula assistir** para cada dúvida.
+Tutor socrático para a disciplina **Fundamentos de Programação em C**. Ele ajuda você a resolver os exercícios **fazendo perguntas e dando pistas, sem entregar a resposta**, explica os erros do compilador em português, testa seu programa e indica **qual videoaula assistir** para cada dúvida.
 
 ## Requisitos
 - **GCC** instalado (no Windows, MinGW-w64), para verificar e testar os programas.

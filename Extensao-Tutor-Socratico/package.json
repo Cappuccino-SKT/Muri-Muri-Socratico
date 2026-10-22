@@ -1,6 +1,6 @@
 {
   "name": "tutor-socratico-c",
-  "displayName": "Tutor Socrático – Programação em C",
+  "displayName": "Muri-Muri Socratico",
   "description": "Tutor de IA para Fundamentos de Programação em C: ajuda com perguntas e pistas, sem entregar a solução, e indica a videoaula certa para cada dúvida.",
   "version": "0.5.0",
   "publisher": "Muri-Muri-Socratico",
@@ -35,7 +35,10 @@
     "tutor",
     "educação",
     "socrático",
-    "copilot"
+    "copilot",
+    "muri-muri",
+    "muri",
+    "tutor socrático"
   ],
   "activationEvents": [
     "onLanguage:c"
