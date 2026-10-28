@@ -4,11 +4,13 @@ import { carregarMaterial, Material, selecionarAulas } from './material';
 import { verificarComGcc } from './gcc';
 import { instrucaoDoComando, montarContexto, REGRAS_DO_TUTOR } from './prompt';
 import { Exercicios } from './exercicios';
-import { ID_PAINEL, PainelExercicio } from './painel';
+import { ID_PAINEL, InfoDoPainel, PainelExercicio } from './painel';
 import { CasoDeTeste, resumirResultados, ResultadoDosTestes, rodarCasos } from './testes';
 import { aulaDoExercicio, Catalogo, montarCatalogo } from './catalogo';
 import { analisarCodigo, traduzirMensagemGcc } from './didatico';
-import { ArvoreDeProgresso, Progresso } from './progresso';
+import { comentarioInicial, reconhecerExercicio } from './reconhecer';
+import { BlocoDePontos, FiltroDoBloco } from './pontos';
+import { Marcacoes } from './marcacoes';
 
 const ID_PARTICIPANTE = 'tutor-socratico.tutor';
 // Comandos do chat que contam como "ajuda pedida" no exercício.
@@ -19,9 +21,9 @@ let catalogo: Catalogo;
 let diagnosticosGcc: vscode.DiagnosticCollection;
 let diagnosticosDicas: vscode.DiagnosticCollection;
 let exercicios: Exercicios;
-let progresso: Progresso;
 let painel: PainelExercicio;
 let barraModo: vscode.StatusBarItem;
+let marcacoes: Marcacoes;
 // Último resultado dos testes por arquivo (só vale enquanto os casos não mudarem).
 const ultimosTestes = new Map<string, { casos: string; resultado: ResultadoDosTestes }>();
 
@@ -32,9 +34,8 @@ export function activate(context: vscode.ExtensionContext) {
     diagnosticosGcc = vscode.languages.createDiagnosticCollection('Tutor Socrático (GCC)');
     diagnosticosDicas = vscode.languages.createDiagnosticCollection('Tutor Socrático (dicas)');
     exercicios = new Exercicios(context.globalState);
-    progresso = new Progresso(context.globalState);
-    contextoGlobal = context.globalState;
-    painel = new PainelExercicio(exercicios, modoAprendizadoLigado, ultimoResultado, infoDoExercicio);
+    marcacoes = new Marcacoes(context.extensionUri);
+    painel =new PainelExercicio(exercicios, salvarEnunciado, modoAprendizadoLigado, ultimoResultado, infoDoExercicio);
 
     const tutor = vscode.chat.createChatParticipant(ID_PARTICIPANTE, responder);
     tutor.iconPath = new vscode.ThemeIcon('mortar-board');
@@ -49,17 +50,35 @@ export function activate(context: vscode.ExtensionContext) {
         diagnosticosDicas,
         barraModo,
         vscode.window.registerWebviewViewProvider(ID_PAINEL, painel),
-        vscode.window.registerTreeDataProvider('tutorSocratico.progresso', new ArvoreDeProgresso(catalogo, progresso)),
-        vscode.commands.registerCommand('tutorSocratico.escolherExercicio', escolherExercicio),
-        vscode.commands.registerCommand('tutorSocratico.abrirExercicio', abrirExercicio),
-        vscode.commands.registerCommand('tutorSocratico.alternarConcluido', alternarConcluido),
         vscode.commands.registerCommand('tutorSocratico.explicarCodigo', () => abrirChat('@tutor /explicar Meu programa funciona. Quero explicar meu código.', false)),
         vscode.commands.registerCommand('tutorSocratico.quiz', quizDaAula),
         vscode.commands.registerCommand('tutorSocratico.depurar', () => abrirChat('@tutor /depurar Quero encontrar o erro sozinho. Por onde começo a depurar?', false)),
         vscode.commands.registerCommand('tutorSocratico.abrirVideo', (url: string) => vscode.env.openExternal(vscode.Uri.parse(url))),
-        progresso.onDidChange(() => painel.atualizar()),
         vscode.workspace.onDidOpenTextDocument(documento => analisarDocumento(documento)),
-        vscode.workspace.onDidChangeTextDocument(evento => analisarComAtraso(evento.document)),
+        marcacoes,
+        vscode.languages.registerCodeLensProvider({ language: 'c' }, marcacoes),
+        vscode.window.onDidChangeVisibleTextEditors(() => marcacoes.redesenhar()),
+        marcacoes.onDidChange(() => painel.atualizar()),
+        vscode.commands.registerCommand('tutorSocratico.proximoPonto', proximoPonto),
+        vscode.commands.registerCommand('tutorSocratico.pistaDoPonto', pistaDoPonto),
+        vscode.commands.registerCommand('tutorSocratico.irParaPonto', (uri?: vscode.Uri) => {
+            const alvo = arquivoDoPonto(uri);
+            return alvo && marcacoes.irPara(alvo);
+        }),
+        vscode.commands.registerCommand('tutorSocratico.limparPontos', (uri?: vscode.Uri) => {
+            const alvo = arquivoDoPonto(uri);
+            if (alvo) {
+                marcacoes.limpar(alvo);
+            }
+        }),
+        vscode.workspace.onDidChangeTextDocument(evento => {
+            marcacoes.aoEditar(evento);
+            analisarComAtraso(evento.document);
+            if (evento.document.uri.toString() === painel.arquivo?.toString() && !exercicios.enunciado(evento.document.uri)) {
+                // Sem enunciado, o painel mostra o que foi deduzido do comentário do arquivo.
+                painel.atualizarComAtraso();
+            }
+        }),
         vscode.workspace.onDidCloseTextDocument(documento => diagnosticosDicas.delete(documento.uri)),
         vscode.commands.registerCommand('tutorSocratico.verificarCodigo', verificarCodigo),
         vscode.commands.registerCommand('tutorSocratico.perguntar', () => abrirChat('@tutor ', true)),
@@ -104,6 +123,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.textDocuments.forEach(analisarDocumento);
     atualizarBarraModo(vscode.window.activeTextEditor);
     perguntarSeEhExercicio(vscode.window.activeTextEditor);
+    // Usado pelos testes de integração.
+    return { marcacoes };
 }
 
 export function deactivate() {}
@@ -128,8 +149,9 @@ async function responder(
         return {};
     }
 
-    const exercicio = documento ? exercicios.enunciado(documento.uri) : undefined;
-    const aulaDoArquivo = documento ? aulaDoExercicio(exercicios.exercicioId(documento.uri)) : undefined;
+    const doArquivo = documento ? exercicioDoArquivo(documento) : undefined;
+    const exercicio = doArquivo?.texto;
+    const aulaDoArquivo = aulaDoExercicio(doArquivo?.id);
     let aulas = selecionarAulas(material, `${request.command ?? ''} ${pergunta} ${exercicio ?? ''} ${problemas.join(' ')}`, codigo);
     // A aula do exercício da lista vem sempre primeiro (no /quiz, só se o aluno não citou outra aula).
     const aulaCitada = /\baula\s*\d+/i.test(pergunta);
@@ -144,10 +166,6 @@ async function responder(
     }
     if (documento && COMANDOS_DE_AJUDA.has(request.command)) {
         await exercicios.somarAjuda(documento.uri);
-        const id = exercicios.exercicioId(documento.uri);
-        if (id) {
-            await progresso.somarAjuda(id);
-        }
     }
     if (documento) {
         stream.reference(documento.uri);
@@ -163,7 +181,9 @@ async function responder(
             codigo,
             problemas,
             exercicio,
+            origemDoExercicio: doArquivo?.origem,
             testes: documento ? resumoDosTestes(documento.uri) : undefined,
+            pontos: documento ? marcacoes.doArquivo(documento.uri) : undefined,
         })),
         vscode.LanguageModelChatMessage.Assistant('Entendido. Vou ajudar o aluno com perguntas e pistas, seguindo o material, sem entregar a solução.'),
         ...historicoDaConversa(chatContext),
@@ -173,14 +193,35 @@ async function responder(
     const textoDoAluno = pergunta || '(o aluno não escreveu nada além do comando)';
     mensagens.push(vscode.LanguageModelChatMessage.User(instrucao ? `[${instrucao}]\n\nAluno: ${textoDoAluno}` : `Aluno: ${textoDoAluno}`));
 
+    // O /verificar e o /proximo terminam com um bloco escondido que diz quais
+    // linhas marcar no editor; ele é tirado do texto mostrado ao aluno.
+    const filtro = new FiltroDoBloco();
+    let bloco: BlocoDePontos | undefined;
     try {
         const resposta = await request.model.sendRequest(mensagens, {}, token);
         for await (const trecho of resposta.text) {
-            stream.markdown(trecho);
+            const visivel = filtro.empurrar(trecho);
+            if (visivel) {
+                stream.markdown(visivel);
+            }
         }
+        const fim = filtro.terminar();
+        if (fim.resto) {
+            stream.markdown(fim.resto);
+        }
+        bloco = fim.bloco;
     } catch (erro) {
         stream.markdown(mensagemDeErro(erro));
         return { metadata: { comando: request.command, falhou: true } };
+    }
+    if (documento && bloco && (request.command === 'verificar' || request.command === 'proximo')) {
+        marcacoes.definir(documento.uri, bloco, request.command === 'proximo');
+        const atual = marcacoes.atual(documento.uri);
+        if (atual) {
+            stream.markdown(`\n\n---\n📍 Marquei a **linha ${atual.ponto.linha}** no editor (ponto ${atual.numero} de ${atual.total}). Quando achar que corrigiu, clique em **✅ Já corrigi** em cima da linha.`);
+            stream.button({ command: 'tutorSocratico.irParaPonto', title: '📍 Ir para a linha', arguments: [documento.uri] });
+            stream.button({ command: 'tutorSocratico.proximoPonto', title: '✅ Já corrigi, conferir', arguments: [documento.uri] });
+        }
     }
     return { metadata: { comando: request.command } };
 }
@@ -381,24 +422,50 @@ async function perguntarSeEhExercicio(editor: vscode.TextEditor | undefined) {
     await exercicios.marcarPerguntado(uri);
 
     const resposta = await vscode.window.showInformationMessage(
-        `Você vai resolver um exercício em "${path.basename(uri.fsPath)}"? Informe o enunciado e o tutor poderá verificar se o seu programa faz o que foi pedido.`,
-        'Informar exercício',
-        'Não é exercício',
+        `Vai resolver um exercício em "${path.basename(uri.fsPath)}"? Cole o enunciado no painel 🎓 e o tutor confere se o programa faz o que foi pedido. Sem enunciado, ele tenta descobrir pelo seu código.`,
+        'Colar o enunciado',
+        'Agora não',
         'Não perguntar mais',
     );
     perguntasAbertas.delete(uri.toString());
 
-    if (resposta === 'Informar exercício') {
-        await informarExercicio();
-    } else if (resposta === 'Não é exercício') {
-        await exercicios.marcarNaoEhExercicio(uri);
+    if (resposta === 'Colar o enunciado') {
+        await informarExercicio(undefined);
     } else if (resposta === 'Não perguntar mais') {
         await vscode.workspace.getConfiguration('tutorSocratico').update('perguntarExercicio', false, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage('Tudo bem. Você ainda pode informar o exercício quando quiser pelo painel 🎓 Tutor Socrático, na barra lateral.');
+        vscode.window.showInformationMessage('Tudo bem. Você ainda pode colar o enunciado quando quiser no painel 🎓 Tutor Socrático, na barra lateral.');
     }
 }
 
-async function informarExercicio() {
+/**
+ * Exercício do arquivo: o enunciado colado pelo aluno ou, sem ele, o
+ * comentário do início do arquivo. Sem nenhum dos dois, o tutor deduz pelo código.
+ */
+function exercicioDoArquivo(documento: vscode.TextDocument): { texto?: string; id?: string; origem: 'aluno' | 'comentario' | 'codigo' } {
+    const enunciado = exercicios.enunciado(documento.uri);
+    if (enunciado) {
+        return { texto: enunciado, id: exercicios.exercicioId(documento.uri), origem: 'aluno' };
+    }
+    const comentario = comentarioInicial(documento.getText());
+    if (comentario) {
+        return { texto: comentario, id: reconhecerExercicio(comentario, catalogo.exercicios)?.id, origem: 'comentario' };
+    }
+    return { origem: 'codigo' };
+}
+
+/** Chamado pelo painel: grava o enunciado e reconhece o exercício da aula. */
+async function salvarEnunciado(uri: vscode.Uri, texto: string) {
+    const e = reconhecerExercicio(texto, catalogo.exercicios);
+    await exercicios.salvarEnunciado(uri, texto, e && { id: e.id, casos: e.casosOficiais });
+}
+
+/** Abre o painel no enunciado; com um texto, grava-o direto como enunciado do arquivo aberto. */
+async function informarExercicio(texto?: string) {
+    const documento = documentoCAberto();
+    if (typeof texto === 'string' && documento) {
+        await salvarEnunciado(documento.uri, texto);
+        return;
+    }
     await vscode.commands.executeCommand(`${ID_PAINEL}.focus`);
     painel.focarEnunciado();
 }
@@ -417,7 +484,7 @@ async function verificarCodigo(uri?: vscode.Uri) {
     }
     await verificarDocumento(documento, false);
 
-    const temExercicio = !!exercicios.enunciado(documento.uri);
+    const temExercicio = exercicioDoArquivo(documento).origem !== 'codigo';
     const pedido = temExercicio
         ? 'Terminei (ou travei). Verifique meu código em relação ao exercício.'
         : 'Terminei (ou travei). Verifique meu código.';
@@ -472,168 +539,74 @@ async function rodarTestes(uri?: vscode.Uri): Promise<ResultadoDosTestes | undef
     }
 }
 
+// ---------------------------------------------------------------------------
+// Pontos marcados no editor (um por vez, do mais fácil ao mais difícil)
+// ---------------------------------------------------------------------------
+
+/** Arquivo do ponto: o que veio no botão ou o .c aberto. */
+function arquivoDoPonto(uri?: vscode.Uri): vscode.Uri | undefined {
+    return uri instanceof vscode.Uri ? uri : documentoCAberto()?.uri;
+}
+
+async function proximoPonto(uri?: vscode.Uri) {
+    const alvo = arquivoDoPonto(uri);
+    const atual = alvo && marcacoes.atual(alvo);
+    if (!alvo || !atual) {
+        vscode.window.showInformationMessage('Nenhum ponto marcado. Clique em "Verificar meu código" para o tutor revisar.');
+        return;
+    }
+    const documento = vscode.workspace.textDocuments.find(d => d.uri.toString() === alvo.toString());
+    if (documento) {
+        if (documento.isDirty) {
+            await documento.save();
+        }
+        await verificarDocumento(documento, false);
+    }
+    await abrirChat(`@tutor /proximo Mexi no ponto da linha ${atual.ponto.linha}. Pode conferir se agora está certo?`, false);
+}
+
+async function pistaDoPonto(uri?: vscode.Uri) {
+    const alvo = arquivoDoPonto(uri);
+    const atual = alvo && marcacoes.atual(alvo);
+    if (!atual) {
+        await pedirPista();
+        return;
+    }
+    await abrirChat(`@tutor /pista Não sei como resolver o ponto da linha ${atual.ponto.linha}. Pode me dar uma pista?`, false);
+}
+
 async function pistaSobreTeste(indice: number) {
     const numero = Number(indice) + 1;
     await abrirChat(`@tutor /teste O caso de teste ${numero} não passou. Não entendi por quê, pode me ajudar?`, false);
 }
 
 // ---------------------------------------------------------------------------
-// Exercícios da lista da aula, progresso, quiz
+// Exercício reconhecido, quiz e comemoração
 // ---------------------------------------------------------------------------
 
-export interface InfoDoExercicio {
-    rotulo?: string;
-    concluido: boolean;
-    ajudas: number;
-}
-
-function infoDoExercicio(uri: vscode.Uri): InfoDoExercicio {
-    const id = exercicios.exercicioId(uri);
-    const e = id ? catalogo.exercicios.find(x => x.id === id) : undefined;
+function infoDoExercicio(uri: vscode.Uri): InfoDoPainel {
+    const documento = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
+    const doArquivo = documento
+        ? exercicioDoArquivo(documento)
+        : { origem: exercicios.enunciado(uri) ? 'aluno' as const : 'codigo' as const, id: exercicios.exercicioId(uri) };
+    const e = doArquivo.id ? catalogo.exercicios.find(x => x.id === doArquivo.id) : undefined;
     return {
         rotulo: e ? `Aula ${String(e.aula).padStart(2, '0')} – ${e.tituloAula}, exercício ${e.numero}` : undefined,
-        concluido: id ? progresso.de(id).concluido === true : false,
+        origem: doArquivo.origem,
+        casosDoProfessor: exercicios.casosDoProfessor(uri),
         ajudas: exercicios.ajudas(uri),
+        ponto: pontoDoPainel(uri),
     };
 }
 
-async function escolherExercicio() {
-    type ItemDaLista = vscode.QuickPickItem & { id?: string };
-    const itens: ItemDaLista[] = [];
-    let aulaAtual = 0;
-    for (const e of catalogo.exercicios) {
-        if (e.aula !== aulaAtual) {
-            aulaAtual = e.aula;
-            itens.push({ label: `Aula ${String(e.aula).padStart(2, '0')} – ${e.tituloAula}`, kind: vscode.QuickPickItemKind.Separator });
-        }
-        itens.push({
-            id: e.id,
-            label: `${progresso.de(e.id).concluido ? '$(pass-filled)' : '$(circle-large-outline)'} Exercício ${e.numero} (Aula ${String(e.aula).padStart(2, '0')})`,
-            detail: e.enunciado,
-        });
-    }
-    const escolhido = await vscode.window.showQuickPick(itens, {
-        title: 'Escolher exercício da lista da aula',
-        placeHolder: 'Digite para filtrar (ex.: "vetor", "aula 11", "média")',
-        matchOnDetail: true,
-    });
-    if (escolhido?.id) {
-        await abrirExercicio(escolhido.id);
-    }
-}
-
-/** Liga o exercício ao arquivo .c aberto, ou cria um arquivo novo para ele. */
-async function abrirExercicio(id: string) {
-    const e = catalogo.exercicios.find(x => x.id === id);
-    if (!e) {
-        return;
-    }
-    const atual = documentoCAberto();
-    const nomeSugerido = `aula${String(e.aula).padStart(2, '0')}_ex${e.numero}.c`;
-    if (atual && atual.uri.scheme === 'file' && path.basename(atual.fileName) !== nomeSugerido) {
-        const usarAtual = `Usar o arquivo aberto (${path.basename(atual.fileName)})`;
-        const resposta = await vscode.window.showQuickPick([usarAtual, `Criar um arquivo novo (${nomeSugerido})`], {
-            title: `Aula ${e.aula}, exercício ${e.numero}: onde você vai resolver?`,
-        });
-        if (!resposta) {
-            return;
-        }
-        if (resposta === usarAtual) {
-            await exercicios.vincular(atual.uri, e.id, e.enunciado, e.casosOficiais);
-            await vscode.window.showTextDocument(atual);
-            await vscode.commands.executeCommand(`${ID_PAINEL}.focus`);
-            return;
-        }
-    }
-
-    const pasta = await pastaDosExercicios();
-    if (!pasta) {
-        return;
-    }
-    const arquivo = vscode.Uri.joinPath(pasta, nomeSugerido);
-    try {
-        await vscode.workspace.fs.stat(arquivo);
-    } catch {
-        const modelo = [
-            '/*',
-            ` * Aula ${String(e.aula).padStart(2, '0')} - ${e.tituloAula} - Exercício ${e.numero}`,
-            ' *',
-            ...quebrarTexto(e.enunciado, 74).map(linha => ` * ${linha}`),
-            ' */',
-            '#include <stdio.h>',
-            '',
-            'int main()',
-            '{',
-            '    ',
-            '    return 0;',
-            '}',
-            '',
-        ].join('\n');
-        await vscode.workspace.fs.writeFile(arquivo, Buffer.from(modelo, 'utf8'));
-    }
-    await exercicios.vincular(arquivo, e.id, e.enunciado, e.casosOficiais);
-    const editor = await vscode.window.showTextDocument(arquivo);
-    const linhaDoCodigo = editor.document.getText().split('\n').findIndex(l => l === '    ');
-    if (linhaDoCodigo >= 0) {
-        editor.selection = new vscode.Selection(linhaDoCodigo, 4, linhaDoCodigo, 4);
-    }
-    await vscode.commands.executeCommand(`${ID_PAINEL}.focus`);
-}
-
-function quebrarTexto(texto: string, largura: number): string[] {
-    const linhas: string[] = [];
-    for (const paragrafo of texto.split('\n')) {
-        let linha = '';
-        for (const palavra of paragrafo.split(/\s+/)) {
-            if (linha && (linha + ' ' + palavra).length > largura) {
-                linhas.push(linha);
-                linha = palavra;
-            } else {
-                linha = linha ? `${linha} ${palavra}` : palavra;
-            }
-        }
-        linhas.push(linha);
-    }
-    return linhas;
-}
-
-let contextoGlobal: vscode.Memento | undefined;
-
-async function pastaDosExercicios(): Promise<vscode.Uri | undefined> {
-    const pastaAberta = vscode.workspace.workspaceFolders?.[0]?.uri;
-    if (pastaAberta) {
-        return pastaAberta;
-    }
-    const salva = contextoGlobal?.get<string>('tutorSocratico.pastaExercicios');
-    if (salva) {
-        return vscode.Uri.parse(salva);
-    }
-    const escolha = await vscode.window.showOpenDialog({
-        canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
-        title: 'Escolha a pasta onde salvar seus exercícios', openLabel: 'Usar esta pasta',
-    });
-    if (escolha?.[0]) {
-        await contextoGlobal?.update('tutorSocratico.pastaExercicios', escolha[0].toString());
-    }
-    return escolha?.[0];
-}
-
-async function alternarConcluido(item?: { tipo?: string; exercicio?: { id: string } }) {
-    let id = item?.exercicio?.id;
-    if (!id) {
-        const documento = documentoCAberto();
-        id = documento ? exercicios.exercicioId(documento.uri) : undefined;
-    }
-    if (!id) {
-        vscode.window.showInformationMessage('Este arquivo não está ligado a um exercício da lista. Use "Escolher exercício da lista" no painel do Tutor Socrático.');
-        return;
-    }
-    await progresso.marcarConcluido(id, !progresso.de(id).concluido);
+function pontoDoPainel(uri: vscode.Uri): InfoDoPainel['ponto'] {
+    const atual = marcacoes.atual(uri);
+    return atual && { numero: atual.numero, total: atual.total, linha: atual.ponto.linha, pergunta: atual.ponto.pergunta };
 }
 
 async function quizDaAula() {
     const documento = documentoCAberto();
-    let aula = documento ? aulaDoExercicio(exercicios.exercicioId(documento.uri)) : undefined;
+    let aula = documento ? aulaDoExercicio(exercicioDoArquivo(documento).id) : undefined;
     if (!aula) {
         const escolha = await vscode.window.showQuickPick(
             material.aulas.map(a => ({ label: a.titulo, aula: a.numero })),
@@ -655,16 +628,9 @@ async function comemorarSeConcluiu(uri: vscode.Uri, resultado: ResultadoDosTeste
     if (!passou || antes) {
         return;
     }
-    const id = exercicios.exercicioId(uri);
-    if (id && !progresso.de(id).concluido) {
-        await progresso.marcarConcluido(id, true);
-    }
     const explicar = 'Explicar meu código ao tutor';
     const quiz = 'Fazer o quiz da aula';
-    const resposta = await vscode.window.showInformationMessage(
-        id ? '🎉 Todos os testes passaram! Exercício marcado como concluído no seu progresso.' : '🎉 Todos os testes passaram!',
-        explicar, ...(id ? [quiz] : []),
-    );
+    const resposta = await vscode.window.showInformationMessage('🎉 Todos os testes passaram!', explicar, quiz);
     if (resposta === explicar) {
         await vscode.commands.executeCommand('tutorSocratico.explicarCodigo');
     } else if (resposta === quiz) {

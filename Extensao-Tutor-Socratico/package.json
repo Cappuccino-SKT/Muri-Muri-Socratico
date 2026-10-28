@@ -2,7 +2,7 @@
   "name": "tutor-socratico-c",
   "displayName": "Muri-Muri Socratico",
   "description": "Tutor de IA para Fundamentos de Programação em C: ajuda com perguntas e pistas, sem entregar a solução, e indica a videoaula certa para cada dúvida.",
-  "version": "0.5.0",
+  "version": "0.7.0",
   "publisher": "Muri-Muri-Socratico",
   "author": {
     "name": "FelipeSKT"
@@ -58,6 +58,10 @@
             "description": "Revisar o código aberto (e o exercício) e apontar onde olhar, sem corrigir"
           },
           {
+            "name": "proximo",
+            "description": "Conferir se você corrigiu o ponto marcado no código e ir para o próximo"
+          },
+          {
             "name": "explicar",
             "description": "Explicar o seu código com as suas palavras (depois que ele funcionar)"
           },
@@ -107,10 +111,6 @@
           "type": "webview",
           "id": "tutorSocratico.exercicio",
           "name": "Exercício"
-        },
-        {
-          "id": "tutorSocratico.progresso",
-          "name": "Progresso"
         }
       ]
     },
@@ -140,7 +140,7 @@
       },
       {
         "command": "tutorSocratico.informarExercicio",
-        "title": "Informar o exercício deste arquivo",
+        "title": "Colar o enunciado do exercício deste arquivo",
         "category": "Tutor Socrático"
       },
       {
@@ -157,23 +157,6 @@
         "command": "tutorSocratico.verificarArquivo",
         "title": "Verificar o arquivo C com o GCC",
         "category": "Tutor Socrático"
-      },
-      {
-        "command": "tutorSocratico.escolherExercicio",
-        "title": "Escolher exercício da lista da aula",
-        "category": "Tutor Socrático",
-        "icon": "$(list-selection)"
-      },
-      {
-        "command": "tutorSocratico.abrirExercicio",
-        "title": "Abrir exercício",
-        "category": "Tutor Socrático"
-      },
-      {
-        "command": "tutorSocratico.alternarConcluido",
-        "title": "Marcar/desmarcar exercício como concluído",
-        "category": "Tutor Socrático",
-        "icon": "$(pass)"
       },
       {
         "command": "tutorSocratico.explicarCodigo",
@@ -193,6 +176,26 @@
       {
         "command": "tutorSocratico.abrirVideo",
         "title": "Assistir à videoaula",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.proximoPonto",
+        "title": "Já corrigi o ponto marcado: conferir e ir para o próximo",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.pistaDoPonto",
+        "title": "Pedir uma pista sobre o ponto marcado",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.irParaPonto",
+        "title": "Ir para o ponto marcado",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.limparPontos",
+        "title": "Esconder as marcações do tutor no código",
         "category": "Tutor Socrático"
       }
     ],
@@ -238,30 +241,24 @@
           "when": "editorLangId == c"
         },
         {
-          "command": "tutorSocratico.abrirExercicio",
-          "when": "false"
-        },
-        {
           "command": "tutorSocratico.abrirVideo",
           "when": "false"
         },
         {
-          "command": "tutorSocratico.alternarConcluido",
-          "when": "false"
-        }
-      ],
-      "view/title": [
+          "command": "tutorSocratico.proximoPonto",
+          "when": "editorLangId == c"
+        },
         {
-          "command": "tutorSocratico.escolherExercicio",
-          "when": "view == tutorSocratico.progresso",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
+          "command": "tutorSocratico.pistaDoPonto",
+          "when": "editorLangId == c"
+        },
         {
-          "command": "tutorSocratico.alternarConcluido",
-          "when": "view == tutorSocratico.progresso && viewItem =~ /^exercicio/",
-          "group": "inline"
+          "command": "tutorSocratico.irParaPonto",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.limparPontos",
+          "when": "editorLangId == c"
         }
       ]
     },
@@ -276,7 +273,7 @@
         "tutorSocratico.perguntarExercicio": {
           "type": "boolean",
           "default": true,
-          "description": "Ao abrir um arquivo .c pela primeira vez, pergunta se ele é um exercício e pede o enunciado."
+          "description": "Ao abrir um arquivo .c pela primeira vez, sugere colar o enunciado do exercício no painel. Sem enunciado, o tutor tenta descobrir o exercício pelo código."
         },
         "tutorSocratico.verificarAoSalvar": {
           "type": "boolean",

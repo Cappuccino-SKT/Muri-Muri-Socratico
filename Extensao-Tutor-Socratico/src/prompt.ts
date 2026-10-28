@@ -1,6 +1,7 @@
 // Monta o texto enviado ao modelo: regras do tutor, material selecionado,
 // código do aluno e erros. Não depende da API do VS Code.
 import { Aula, Material } from './material';
+import { Ponto } from './pontos';
 
 export const REGRAS_DO_TUTOR = `
 Você é o Tutor Socrático da disciplina Fundamentos de Programação em C (Engenharia de Computação, Prof. Muriel de Souza Godoi).
@@ -33,7 +34,30 @@ AMBIENTE DA TURMA
 
 VIDEOAULAS
 - Ao indicar um vídeo, cite o nome da aula, o link e, se possível, em que parte do vídeo (começo, meio ou final) o assunto aparece, usando o ÍNDICE DAS VIDEOAULAS.
+
+FORMATO DA RESPOSTA (o aluno lê no chat do VS Code, que mostra Markdown)
+- Parágrafos curtos, de 1 a 3 frases, separados por uma linha em branco. Nada de blocos longos de texto.
+- Destaque em **negrito** o essencial: a linha para olhar (ex.: **linha 20**) e o conceito principal.
+- Nomes de variáveis, funções, operadores e trechos curtos de código entre crases (ex.: \`scanf\`, \`&nota\`, \`i <= 5\`).
+- Quando houver mais de um item (passos, opções, verificações), use lista com "-" ou numerada.
+- Exemplos de código sempre em bloco \`\`\`c, nunca no meio da frase.
+- Deixe a pergunta para o aluno sozinha na última linha, começando com "🤔 ".
+- Use poucos emojis (no máximo 3 por resposta) e títulos só em respostas longas, como o quiz.
 `.trim();
+
+// Pedido do bloco escondido que a extensão usa para marcar a linha no editor (ver pontos.ts).
+const MARCAR_PONTOS = [
+    'MARCAÇÃO NO EDITOR: no FINAL da resposta, depois de todo o texto, escreva este bloco exatamente neste formato. Ele fica escondido do aluno; a extensão o usa para marcar a linha no editor.',
+    '<!--PONTOS',
+    'resolvido: -',
+    'LINHA | PERGUNTA CURTA',
+    '-->',
+    'Na linha "resolvido", escreva "sim" ou "nao" quando o aluno pediu para conferir o ponto atual; nos outros casos, "-".',
+    'Depois, uma linha por ponto que AINDA falta revisar, do mais fácil para o mais difícil; a primeira é a que o aluno vai trabalhar agora. LINHA é o número da linha no código numerado (ou um intervalo, como 12-15). PERGUNTA CURTA tem até 12 palavras e não entrega a resposta.',
+    'Não coloque o bloco dentro de ``` e não fale dele no texto. Se não houver pontos para revisar, escreva o bloco só com a linha "resolvido".',
+].join('\n');
+
+const ORDEM_DOS_PONTOS = 'Ordene os pontos do MAIS FÁCIL para o MAIS DIFÍCIL: primeiro erros de compilação e de sintaxe; depois erros simples (um & faltando, um operador trocado); depois a lógica (laços, condições, cálculos); por último casos especiais e o que falta do enunciado. O aluno vai resolver UM POR VEZ.';
 
 const INSTRUCOES_POR_COMANDO: Record<string, string> = {
     erro: 'O aluno quer entender um erro ou aviso do compilador. Explique o que a mensagem significa e faça uma pergunta que o leve à causa. Não escreva a linha corrigida.',
@@ -55,18 +79,30 @@ const INSTRUCOES_POR_COMANDO: Record<string, string> = {
         'Alternativa sem depurador: colocar um printf temporário para mostrar o valor das variáveis naquele ponto.',
         'Não diga qual é o erro: o objetivo é o aluno encontrá-lo observando os valores.',
     ].join('\n'),
-    pista: 'O aluno quer uma pista sobre o código aberto. Siga a escada de pistas a partir do degrau mais baixo que ainda não foi tentado nesta conversa.',
+    pista: 'O aluno quer uma pista sobre o código aberto. Siga a escada de pistas a partir do degrau mais baixo que ainda não foi tentado nesta conversa. Se houver PONTOS EM ANDAMENTO, a pista é sobre o ponto atual, a não ser que o aluno pergunte de outra coisa.',
     video: 'O aluno quer saber qual videoaula assistir. Use o índice das videoaulas e responda com o vídeo principal, o link e a parte do vídeo; cite um "veja também" se houver.',
     conceito: 'O aluno quer entender um conceito. Explique de forma curta com base no material, com no máximo um exemplo de sintaxe genérico, e termine com uma pergunta que verifique se ele entendeu.',
     verificar: [
         'O aluno clicou em "Verificar meu código": terminou o programa ou travou e quer uma revisão.',
         'Compare o código com o ENUNCIADO DO EXERCÍCIO (se houver) e procure: erros de compilação, erros de lógica, casos não tratados e diferenças em relação ao que o enunciado pede.',
-        'NÃO corrija nada e não mostre o código corrigido. Responda neste formato:',
-        '- Uma frase dizendo como o código está no geral (compila? parece fazer o que foi pedido?).',
-        '- No máximo 3 pontos para revisar, do mais importante para o menos importante. Para cada um: onde olhar (linha ou trecho) e uma pergunta que leve o aluno a perceber o problema sozinho.',
+        'NÃO corrija nada e não mostre o código corrigido.',
+        ORDEM_DOS_PONTOS,
+        'Responda neste formato:',
+        '- **Visão geral:** uma frase dizendo como o código está (compila? parece fazer o que foi pedido?) e quantos pontos você encontrou (ex.: "Encontrei 3 pontos; vamos um de cada vez, começando pelo mais simples.").',
+        '- **📍 Ponto 1 – linha N:** apresente SÓ o primeiro ponto (o mais fácil): onde olhar e uma pergunta que leve o aluno a perceber o problema sozinho. Não descreva os outros pontos agora.',
         '- Se o código estiver correto, diga isso, explique em uma frase por que está certo e sugira um caso de teste para o aluno experimentar (ex.: valor zero, negativo, limite do vetor).',
         'Se não houver enunciado, deduza o objetivo pelo código e pergunte ao aluno se é isso mesmo antes de apontar erros de lógica.',
         'Se houver RESULTADO DOS CASOS DE TESTE, use os casos que falharam como ponto de partida (ex.: "com a entrada X, o que você esperava ver? o que apareceu?").',
+        MARCAR_PONTOS,
+    ].join('\n'),
+    proximo: [
+        'O aluno diz que corrigiu o ponto atual (veja PONTOS EM ANDAMENTO) e quer conferir. Olhe o código como está AGORA.',
+        '- Se o ponto atual foi resolvido: confirme em uma frase e explique por que agora está certo. Depois apresente o próximo ponto da lista do mesmo jeito (**📍 Ponto N – linha X:** e uma pergunta). Se não sobrou nenhum, comemore e sugira rodar os casos de teste.',
+        '- Se ainda não foi resolvido: diga com gentileza que ainda não, sem dar a resposta, e suba um degrau na escada de pistas sobre ESSE MESMO ponto.',
+        '- Se a mudança criou um problema novo, inclua-o na lista na posição certa.',
+        ORDEM_DOS_PONTOS,
+        'Os números de linha podem ter mudado com as edições: use sempre os números do código numerado atual.',
+        MARCAR_PONTOS,
     ].join('\n'),
 };
 
@@ -75,8 +111,20 @@ export interface ContextoDoAluno {
     codigo?: string;
     problemas?: string[];
     exercicio?: string;
+    // De onde veio o enunciado: colado no painel, comentário do arquivo ou nenhum (deduzir pelo código).
+    origemDoExercicio?: 'aluno' | 'comentario' | 'codigo';
     testes?: string[];
+    // Pontos marcados no editor que o aluno está resolvendo, um por vez.
+    pontos?: { pontos: Ponto[]; resolvidos: number };
 }
+
+// Usado quando o aluno não informou o enunciado nem o escreveu em comentário.
+const EXERCICIO_DEDUZIDO = [
+    'O aluno não informou o enunciado. Descubra sozinho que tipo de exercício é, pelo código: comentários, nomes de variáveis, textos dos printf, o que é lido com scanf e as estruturas usadas (vetor, matriz, string, struct, ponteiro, recursão, arquivo...).',
+    'Se ele parecer com um dos "Exercícios da aula" do material acima, diga qual (aula e número).',
+    'Na sua primeira resposta da conversa, comece com UMA frase curta dizendo o que você entendeu (ex.: "Pelo seu código, parece que o exercício pede para ler 5 notas e mostrar a média. É isso?") e já siga a resposta com essa suposição. Não pergunte de novo se o aluno já confirmou ou corrigiu.',
+    'Se o código ainda estiver quase vazio e não der para deduzir, pergunte ao aluno, em uma frase, o que o exercício pede.',
+].join('\n');
 
 export function instrucaoDoComando(comando: string | undefined): string | undefined {
     return comando ? INSTRUCOES_POR_COMANDO[comando] : undefined;
@@ -91,8 +139,12 @@ export function montarContexto(material: Material, aulas: Aula[], aluno: Context
     }
     partes.push('## ÍNDICE DAS VIDEOAULAS\n' + material.indiceVideos);
 
-    if (aluno.exercicio) {
+    if (aluno.exercicio && aluno.origemDoExercicio === 'comentario') {
+        partes.push('## ENUNCIADO DO EXERCÍCIO (lido do comentário no início do arquivo; o aluno não colou o enunciado no painel)\n' + aluno.exercicio);
+    } else if (aluno.exercicio) {
         partes.push('## ENUNCIADO DO EXERCÍCIO (informado pelo aluno)\n' + aluno.exercicio);
+    } else if (aluno.codigo) {
+        partes.push('## EXERCÍCIO NÃO INFORMADO\n' + EXERCICIO_DEDUZIDO);
     }
     if (aluno.codigo) {
         partes.push(`## CÓDIGO ABERTO PELO ALUNO (${aluno.nomeArquivo ?? 'arquivo'})\n` + numerarLinhas(aluno.codigo));
@@ -102,6 +154,16 @@ export function montarContexto(material: Material, aulas: Aula[], aluno: Context
     }
     if (aluno.problemas && aluno.problemas.length > 0) {
         partes.push('## ERROS E AVISOS DO COMPILADOR NESTE ARQUIVO\n' + aluno.problemas.join('\n'));
+    }
+    if (aluno.pontos && aluno.pontos.pontos.length > 0) {
+        const { pontos, resolvidos } = aluno.pontos;
+        const total = resolvidos + pontos.length;
+        const descrever = (p: Ponto) => `linha ${p.ate ? `${p.linha}-${p.ate}` : p.linha}: ${p.pergunta}`;
+        partes.push('## PONTOS EM ANDAMENTO (marcados no editor do aluno; ele resolve um por vez)\n' + [
+            `- Já resolvidos: ${resolvidos}`,
+            `- Ponto atual (${resolvidos + 1} de ${total}): ${descrever(pontos[0])}`,
+            ...pontos.slice(1).map(p => `- Depois: ${descrever(p)}`),
+        ].join('\n'));
     }
     return partes.join('\n\n');
 }

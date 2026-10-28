@@ -3,6 +3,8 @@
 import * as assert from 'assert';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { montarCatalogo } from '../../catalogo';
+import { carregarMaterial } from '../../material';
 
 const esperar = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -34,11 +36,15 @@ export async function run(): Promise<void> {
     const comandos = await vscode.commands.getCommands(true);
     for (const id of ['tutorSocratico.verificarCodigo', 'tutorSocratico.perguntar', 'tutorSocratico.informarExercicio',
         'tutorSocratico.alternarModoAprendizado', 'tutorSocratico.pedirPista', 'tutorSocratico.verificarArquivo',
-        'tutorSocratico.rodarTestes', 'tutorSocratico.pistaSobreTeste', 'tutorSocratico.escolherExercicio',
-        'tutorSocratico.abrirExercicio', 'tutorSocratico.alternarConcluido', 'tutorSocratico.explicarCodigo', 'tutorSocratico.quiz', 'tutorSocratico.depurar']) {
+        'tutorSocratico.rodarTestes', 'tutorSocratico.pistaSobreTeste', 'tutorSocratico.explicarCodigo',
+        'tutorSocratico.quiz', 'tutorSocratico.depurar']) {
         assert.ok(comandos.includes(id), `comando ausente: ${id}`);
     }
     ok('todos os comandos registrados');
+    for (const id of ['tutorSocratico.escolherExercicio', 'tutorSocratico.abrirExercicio', 'tutorSocratico.alternarConcluido']) {
+        assert.ok(!comandos.includes(id), `comando removido ainda existe: ${id}`);
+    }
+    ok('a lista de exercícios prontos foi removida');
 
     const sugestoes = () => vscode.workspace.getConfiguration('editor', { languageId: 'c' }).get<boolean>('inlineSuggest.enabled');
     assert.strictEqual(sugestoes(), false, 'o padrão para C deveria ser sem sugestões automáticas');
@@ -92,26 +98,46 @@ export async function run(): Promise<void> {
     ok('dica offline aparece enquanto o aluno digita');
     await vscode.commands.executeCommand('undo');
 
-    await vscode.commands.executeCommand('tutorSocratico.progresso.focus');
-    ok('árvore Progresso abre sem erro');
-
-    // Abrir um exercício da lista sem nenhum .c aberto cria o arquivo modelo na pasta.
+    // Enunciado colado pelo aluno: se for um exercício da aula com casos do
+    // professor, os casos entram sozinhos e rodam.
     await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-    await vscode.commands.executeCommand('tutorSocratico.abrirExercicio', 'aula11-ex4');
-    const novo = await aguardar(() => vscode.window.activeTextEditor?.document.fileName.endsWith('aula11_ex4.c') ? vscode.window.activeTextEditor : undefined);
-    const textoNovo = novo.document.getText();
-    assert.ok(textoNovo.includes('Aula 11 - Vetores - Exercício 4') && textoNovo.includes('int main()') && textoNovo.includes('8 inteiros'), textoNovo);
-    ok('abrir exercício da lista cria aula11_ex4.c com o enunciado e o esqueleto');
-
-    // Exercício com casos oficiais: os casos entram sozinhos e rodam.
-    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
-    await vscode.commands.executeCommand('tutorSocratico.abrirExercicio', 'aula05-ex4');
-    await aguardar(() => vscode.window.activeTextEditor?.document.fileName.endsWith('aula05_ex4.c') || undefined);
+    const pasta = vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file(path.dirname(exemplo));
+    const vazio = vscode.Uri.joinPath(pasta, 'teste_colado.c');
+    await vscode.workspace.fs.writeFile(vazio, Buffer.from('#include <stdio.h>\n\nint main()\n{\n    return 0;\n}\n', 'utf8'));
+    await vscode.window.showTextDocument(vazio);
+    const pastaMaterial = path.join(extensao!.extensionPath, 'material');
+    const ex4 = montarCatalogo(carregarMaterial(pastaMaterial), pastaMaterial).exercicios.find(e => e.id === 'aula05-ex4')!;
+    await vscode.commands.executeCommand('tutorSocratico.informarExercicio', ex4.enunciado);
     const resultado = await vscode.commands.executeCommand<{ compilou: boolean; casos: { situacao: string }[] }>('tutorSocratico.rodarTestes');
     assert.ok(resultado && resultado.compilou, JSON.stringify(resultado));
-    assert.deepStrictEqual(resultado.casos.map(c => c.situacao), ['falhou', 'falhou'], 'o esqueleto vazio deve falhar nos 2 casos oficiais');
-    ok('casos oficiais carregados ao escolher o exercício (aula05-ex4: 2 casos, esqueleto vazio falha)');
+    assert.deepStrictEqual(resultado.casos.map(c => c.situacao), ['falhou', 'falhou'], 'o programa vazio deve falhar nos 2 casos do professor');
+    ok('enunciado colado é reconhecido (aula05-ex4) e os 2 casos do professor entram sozinhos');
+
+    // Pontos que o tutor manda revisar: marcados um por vez no editor.
+    const { marcacoes } = extensao!.exports as { marcacoes: import('../../marcacoes').Marcacoes };
+    marcacoes.definir(vazio, { pontos: [{ linha: 5, pergunta: 'O que o programa mostra?' }, { linha: 3, pergunta: 'Outra?' }] }, false);
+    const lentes = async () => (await vscode.commands.executeCommand<vscode.CodeLens[]>('vscode.executeCodeLensProvider', vazio))
+        .filter(l => l.command?.command.startsWith('tutorSocratico.'));
+    let botoes = await lentes();
+    assert.deepStrictEqual(botoes.map(l => l.command!.title), ['🎓 Ponto 1 de 2', '✅ Já corrigi, conferir', '💡 Pista', '✖ Esconder']);
+    assert.strictEqual(botoes[0].range.start.line, 4);
+    ok('ponto atual marcado no editor com os botões em cima da linha');
+
+    const editorColado = vscode.window.activeTextEditor!;
+    await editorColado.edit(e => e.insert(new vscode.Position(0, 0), '// comentario\n'));
+    assert.strictEqual(marcacoes.atual(vazio)!.ponto.linha, 6);
+    ok('a marcação acompanha a linha quando o aluno escreve acima dela');
+
+    marcacoes.definir(vazio, { resolvido: true, pontos: [{ linha: 4, pergunta: 'Outra?' }] }, true);
+    botoes = await lentes();
+    assert.strictEqual(botoes[0].command!.title, '🎓 Ponto 2 de 2');
+    await vscode.commands.executeCommand('tutorSocratico.limparPontos', vazio);
+    assert.strictEqual((await lentes()).length, 0);
+    ok('ponto resolvido passa para o próximo, e "Esconder" tira a marcação');
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.workspace.fs.delete(vazio);
 
     console.log('\n' + resultados.join('\n') + '\n\nIntegração: todos os testes passaram.');
 }

@@ -1,6 +1,6 @@
-// Painel "Exercício" na barra lateral do Tutor Socrático: o aluno escreve o
-// enunciado do exercício do arquivo .c aberto, cadastra casos de teste e tem
-// os botões de ajuda.
+// Painel "Exercício" na barra lateral do Tutor Socrático. Na tela principal
+// ficam só o enunciado e o botão de verificar; os casos de teste, as outras
+// ajudas e as opções ficam em seções que o aluno abre quando quiser.
 import * as vscode from 'vscode';
 import { Exercicios } from './exercicios';
 import { CasoDeTeste, ResultadoDosTestes } from './testes';
@@ -13,31 +13,37 @@ type MensagemDoPainel =
     | { tipo: 'salvarCasos'; casos: CasoDeTeste[]; uri?: string }
     | { tipo: 'rodarTestes' }
     | { tipo: 'pistaTeste'; indice: number }
-    | { tipo: 'naoEhExercicio'; uri?: string }
     | { tipo: 'verificar' }
-    | { tipo: 'perguntar' }
     | { tipo: 'modoAprendizado' }
     | { tipo: 'comando'; comando: string };
 
 // Botões do painel que só disparam um comando da extensão.
 const COMANDOS_DO_PAINEL = new Set([
-    'tutorSocratico.escolherExercicio', 'tutorSocratico.alternarConcluido', 'tutorSocratico.explicarCodigo',
-    'tutorSocratico.quiz', 'tutorSocratico.depurar',
+    'tutorSocratico.perguntar', 'tutorSocratico.pedirPista', 'tutorSocratico.depurar',
+    'tutorSocratico.explicarCodigo', 'tutorSocratico.quiz',
+    'tutorSocratico.irParaPonto', 'tutorSocratico.proximoPonto', 'tutorSocratico.pistaDoPonto',
 ]);
 
 export interface InfoDoPainel {
+    // Exercício da aula reconhecido no enunciado (ex.: "Aula 11 – Vetores, exercício 4").
     rotulo?: string;
-    concluido: boolean;
+    // De onde vem o enunciado: colado no painel, comentário do arquivo ou nenhum.
+    origem: 'aluno' | 'comentario' | 'codigo';
+    casosDoProfessor: boolean;
     ajudas: number;
+    // Ponto que o tutor marcou no editor e o aluno está resolvendo agora.
+    ponto?: { numero: number; total: number; linha: number; pergunta: string };
 }
 
 export class PainelExercicio implements vscode.WebviewViewProvider {
     private visao?: vscode.WebviewView;
     private arquivoAtual?: vscode.Uri;
     private focarAoAbrir = false;
+    private atraso?: NodeJS.Timeout;
 
     constructor(
         private readonly exercicios: Exercicios,
+        private readonly salvarEnunciado: (uri: vscode.Uri, texto: string) => Promise<void>,
         private readonly modoAprendizadoLigado: () => boolean,
         private readonly ultimosResultados: (uri: vscode.Uri) => ResultadoDosTestes | undefined,
         private readonly info: (uri: vscode.Uri) => InfoDoPainel,
@@ -74,10 +80,15 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
             enunciado: uri ? this.exercicios.enunciado(uri) ?? '' : '',
             casos: uri ? this.exercicios.casos(uri) : [],
             resultados: uri ? this.ultimosResultados(uri) : undefined,
-            naoEhExercicio: uri ? this.exercicios.naoEhExercicio(uri) : false,
             info: uri ? this.info(uri) : undefined,
             modoAprendizado: this.modoAprendizadoLigado(),
         });
+    }
+
+    /** Atualiza depois de uma pausa na digitação (o comentário do arquivo pode ter mudado). */
+    atualizarComAtraso() {
+        clearTimeout(this.atraso);
+        this.atraso = setTimeout(() => this.atualizar(), 800);
     }
 
     /** Mostra que os testes estão rodando ou os resultados deles. */
@@ -111,7 +122,7 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
                 return;
             case 'salvar':
                 if (uri) {
-                    await this.exercicios.salvarEnunciado(uri, mensagem.texto);
+                    await this.salvarEnunciado(uri, mensagem.texto);
                 }
                 return;
             case 'salvarCasos':
@@ -125,23 +136,17 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
             case 'pistaTeste':
                 await vscode.commands.executeCommand('tutorSocratico.pistaSobreTeste', mensagem.indice);
                 return;
-            case 'naoEhExercicio':
-                if (uri) {
-                    await this.exercicios.marcarNaoEhExercicio(uri);
-                }
-                return;
             case 'verificar':
                 await vscode.commands.executeCommand('tutorSocratico.verificarCodigo', uri);
-                return;
-            case 'perguntar':
-                await vscode.commands.executeCommand('tutorSocratico.perguntar');
                 return;
             case 'modoAprendizado':
                 await vscode.commands.executeCommand('tutorSocratico.alternarModoAprendizado');
                 return;
             case 'comando':
                 if (COMANDOS_DO_PAINEL.has(mensagem.comando)) {
-                    await vscode.commands.executeCommand(mensagem.comando);
+                    // Os botões do ponto marcado valem para o arquivo mostrado no painel.
+                    const doPonto = mensagem.comando.endsWith('Ponto');
+                    await vscode.commands.executeCommand(mensagem.comando, ...(doPonto && uri ? [uri] : []));
                 }
                 return;
         }
@@ -161,13 +166,13 @@ function htmlDoPainel(nonce: string): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); padding: 0 12px 12px; }
-  h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--vscode-descriptionForeground); margin: 16px 0 6px; }
-  .arquivo { font-weight: 600; word-break: break-all; }
-  .dica { color: var(--vscode-descriptionForeground); margin: 4px 0 8px; }
+  body { font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); padding: 4px 12px 12px; }
+  .titulo { display: block; font-weight: 600; margin: 10px 0 6px; }
+  .arquivo { font-size: 12px; color: var(--vscode-descriptionForeground); word-break: break-all; margin-top: 8px; }
+  .dica { color: var(--vscode-descriptionForeground); font-size: 12px; margin: 4px 0 8px; }
   textarea { width: 100%; box-sizing: border-box; resize: vertical; font-family: var(--vscode-editor-font-family, monospace); font-size: var(--vscode-font-size);
              color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, transparent); padding: 6px; }
-  #enunciado { min-height: 120px; font-family: var(--vscode-font-family); }
+  #enunciado { min-height: 110px; font-family: var(--vscode-font-family); }
   textarea:focus { outline: 1px solid var(--vscode-focusBorder); }
   button { width: 100%; margin-top: 6px; padding: 6px; border: none; cursor: pointer; font-family: inherit; font-size: inherit;
            color: var(--vscode-button-foreground); background: var(--vscode-button-background); }
@@ -175,10 +180,34 @@ function htmlDoPainel(nonce: string): string {
   button:disabled { opacity: .6; cursor: default; }
   button.secundario { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
   button.secundario:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  #verificar { margin-top: 10px; padding: 9px 6px; font-weight: 600; }
   .link { background: none; color: var(--vscode-textLink-foreground); padding: 2px 0; text-align: left; width: auto; margin-top: 2px; }
   .link:hover { background: none; text-decoration: underline; }
-  .status { min-height: 1.2em; color: var(--vscode-descriptionForeground); font-size: 12px; }
+  .status { min-height: 1.2em; color: var(--vscode-descriptionForeground); font-size: 12px; margin-top: 2px; }
+  .origem { font-size: 12px; margin: 4px 0 0; padding: 4px 6px; border-left: 3px solid var(--vscode-textLink-foreground); background: var(--vscode-textCodeBlock-background); }
+  .origem:empty { display: none; }
   .oculto { display: none; }
+  .ponto { margin-top: 10px; padding: 8px; border-left: 3px solid #f0b400; background: var(--vscode-textCodeBlock-background); }
+  .ponto-titulo { font-weight: 600; }
+  .ponto-pergunta { margin: 4px 0 2px; }
+  .ponto button { margin-top: 6px; }
+
+  /* Seções que o aluno abre quando precisa */
+  details { border-top: 1px solid var(--vscode-panel-border, #8884); margin-top: 14px; }
+  details:first-of-type { margin-top: 18px; }
+  summary { list-style: none; cursor: pointer; padding: 8px 0; font-weight: 600; display: flex; align-items: center; gap: 6px; user-select: none; }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: '›'; display: inline-block; width: 10px; transition: transform .1s; color: var(--vscode-descriptionForeground); }
+  details[open] > summary::before { transform: rotate(90deg); }
+  summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
+  .selo { margin-left: auto; font-weight: normal; font-size: 12px; color: var(--vscode-descriptionForeground); }
+  .conteudo { padding: 0 0 6px 16px; }
+
+  /* Botões das ajudas: título e uma linha explicando */
+  .opcao { display: block; text-align: left; padding: 6px 8px; color: var(--vscode-foreground); background: none; border: 1px solid var(--vscode-panel-border, #8884); }
+  .opcao:hover { background: var(--vscode-list-hoverBackground); }
+  .opcao small { display: block; color: var(--vscode-descriptionForeground); font-size: 11px; margin-top: 2px; }
+
   .caso { border: 1px solid var(--vscode-panel-border, var(--vscode-input-border, #8884)); padding: 6px 8px 8px; margin-bottom: 8px; }
   .caso-topo { display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
   .caso label { display: block; font-size: 12px; color: var(--vscode-descriptionForeground); margin: 6px 0 2px; }
@@ -190,7 +219,6 @@ function htmlDoPainel(nonce: string): string {
   .falhou { color: var(--vscode-testing-iconFailed, #f85149); }
   pre { white-space: pre-wrap; word-break: break-word; background: var(--vscode-textCodeBlock-background); padding: 4px 6px; margin: 4px 0; max-height: 160px; overflow: auto; }
   .resumo { font-weight: 600; margin-top: 8px; }
-  .vinculo { margin: 4px 0; padding: 4px 6px; border-left: 3px solid var(--vscode-textLink-foreground); background: var(--vscode-textCodeBlock-background); }
   .linha-botoes { display: flex; gap: 6px; }
   .linha-botoes button { flex: 1; }
   .previsao-certa { color: var(--vscode-testing-iconPassed, #3fb950); }
@@ -199,72 +227,88 @@ function htmlDoPainel(nonce: string): string {
 </head>
 <body>
   <div id="semArquivo">
-    <p class="dica">Abra um arquivo <b>.c</b> para informar o exercício e pedir ajuda ao tutor.</p>
+    <p class="dica">Abra ou crie um arquivo <b>.c</b> para usar o tutor.</p>
   </div>
 
   <div id="comArquivo" class="oculto">
-    <h3>Arquivo</h3>
     <div class="arquivo" id="arquivo"></div>
 
-    <div id="blocoExercicio">
-      <h3>Exercício</h3>
-      <div id="vinculo" class="vinculo oculto"></div>
-      <button class="secundario" id="escolherExercicio">📚 Escolher exercício da lista da aula</button>
-      <p class="dica">Ou cole aqui o enunciado do exercício. O tutor usa o enunciado para verificar se o seu programa faz o que foi pedido.</p>
-      <textarea id="enunciado" placeholder="Ex.: Leia 5 notas, guarde em um vetor e mostre a soma e a média..."></textarea>
-      <div class="status" id="status"></div>
+    <label class="titulo" for="enunciado">Exercício</label>
+    <textarea id="enunciado" placeholder="Cole aqui o enunciado do exercício (opcional)."></textarea>
+    <div class="status" id="status"></div>
+    <div class="origem" id="origem"></div>
 
-      <h3>Casos de teste</h3>
-      <p class="dica">Escreva o que você digitaria no programa (<b>Entrada</b>) e o que ele deveria mostrar (<b>Saída esperada</b>). O caso passa se a saída esperada aparecer na saída do programa; mensagens como "Digite a nota:" são ignoradas.</p>
-      <p class="dica">🔮 Antes de rodar, tente <b>prever</b> o que o seu programa vai mostrar: é o "teste de mesa".</p>
-      <div id="casos"></div>
-      <button class="secundario" id="adicionarCaso">+ Adicionar caso de teste</button>
-      <button id="rodarTestes">▶ Rodar testes</button>
-      <div id="resumoTestes"></div>
-
-      <button class="link" id="naoEhExercicio">Este arquivo não é um exercício</button>
-    </div>
-    <div id="blocoNaoEhExercicio" class="oculto">
-      <p class="dica">Este arquivo foi marcado como <b>não é um exercício</b>.</p>
-      <button class="link" id="ehExercicio">Na verdade é um exercício: informar o enunciado</button>
-    </div>
-
-    <h3>Ajuda do tutor</h3>
     <button id="verificar">🎓 Verificar meu código</button>
-    <button class="secundario" id="perguntar">💬 Perguntar ao tutor</button>
-    <div class="linha-botoes">
-      <button class="secundario" id="depurar" title="Aprender a achar o erro com o depurador ou printf">🐞 Depurar</button>
-      <button class="secundario" id="explicar" title="Explicar seu código com suas palavras">🗣️ Explicar</button>
-      <button class="secundario" id="quiz" title="Quiz rápido de revisão da aula">❓ Quiz</button>
+    <p class="dica">O tutor aponta onde olhar e faz perguntas, sem entregar a resposta.</p>
+
+    <div class="ponto oculto" id="ponto">
+      <div class="ponto-titulo" id="pontoTitulo"></div>
+      <div class="ponto-pergunta" id="pontoPergunta"></div>
+      <div class="linha-botoes">
+        <button class="secundario" data-comando="tutorSocratico.irParaPonto">📍 Ir para a linha</button>
+        <button data-comando="tutorSocratico.proximoPonto">✅ Já corrigi</button>
+      </div>
+      <button class="link" data-comando="tutorSocratico.pistaDoPonto">💡 Pedir uma pista sobre este ponto</button>
     </div>
-    <p class="dica">O tutor aponta onde olhar e faz perguntas, mas não entrega a resposta.</p>
-    <p class="dica" id="ajudas"></p>
-    <button class="link oculto" id="concluido"></button>
+
+    <details id="secTestes">
+      <summary>🧪 Testar meu programa <span class="selo" id="seloTestes"></span></summary>
+      <div class="conteudo">
+        <p class="dica">Escreva o que você digitaria no programa (<b>Entrada</b>) e o que ele deveria mostrar (<b>Saída esperada</b>). Mensagens como "Digite a nota:" são ignoradas.</p>
+        <p class="dica" id="dicaProfessor"></p>
+        <div id="casos"></div>
+        <div class="linha-botoes">
+          <button class="secundario" id="adicionarCaso">+ Caso de teste</button>
+          <button id="rodarTestes">▶ Rodar testes</button>
+        </div>
+        <div id="resumoTestes"></div>
+      </div>
+    </details>
+
+    <details id="secAjuda">
+      <summary>💬 Mais ajuda do tutor <span class="selo" id="seloAjuda"></span></summary>
+      <div class="conteudo">
+        <button class="opcao" data-comando="tutorSocratico.perguntar">💬 Perguntar ao tutor<small>Escreva sua dúvida no chat.</small></button>
+        <button class="opcao" data-comando="tutorSocratico.pedirPista">💡 Pedir uma pista<small>Uma dica pequena para destravar.</small></button>
+        <button class="opcao" data-comando="tutorSocratico.depurar">🐞 Depurar<small>Aprenda a achar o erro com o depurador ou printf.</small></button>
+        <button class="opcao" data-comando="tutorSocratico.explicarCodigo">🗣️ Explicar meu código<small>Depois que funcionar: explique com suas palavras.</small></button>
+        <button class="opcao" data-comando="tutorSocratico.quiz">❓ Quiz da aula<small>3 perguntas rápidas de revisão.</small></button>
+        <p class="dica" id="ajudas"></p>
+      </div>
+    </details>
   </div>
 
-  <h3>Modo aprendizado</h3>
-  <p class="dica" id="textoModo"></p>
-  <button class="secundario" id="modo"></button>
+  <details id="secOpcoes">
+    <summary>⚙️ Opções</summary>
+    <div class="conteudo">
+      <p class="dica" id="textoModo"></p>
+      <button class="secundario" id="modo"></button>
+    </div>
+  </details>
 
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const $ = id => document.getElementById(id);
+  const QUEBRA = String.fromCharCode(10);
   let temporizador, temporizadorCasos, envioDeCasosPendente;
   let casos = [];
   let uriAtual;
   let resultados;
 
-  function mostrarExercicio(ehExercicio) {
-    $('blocoExercicio').classList.toggle('oculto', !ehExercicio);
-    $('blocoNaoEhExercicio').classList.toggle('oculto', ehExercicio);
-  }
+  // Lembra quais seções o aluno deixou abertas.
+  const SECOES = ['secTestes', 'secAjuda', 'secOpcoes'];
+  const salvo = vscode.getState() || {};
+  SECOES.forEach(id => {
+    $(id).open = (salvo.abertas || []).includes(id);
+    $(id).addEventListener('toggle', () => vscode.setState({ abertas: SECOES.filter(s => $(s).open) }));
+  });
 
   function salvar() {
     clearTimeout(temporizador);
     temporizador = undefined;
     if (!uriAtual) return;
     vscode.postMessage({ tipo: 'salvar', texto: $('enunciado').value, uri: uriAtual });
-    $('status').textContent = $('enunciado').value.trim() ? 'Exercício salvo ✓' : '';
+    $('status').textContent = $('enunciado').value.trim() ? 'Salvo ✓' : '';
   }
 
   function salvarCasos(imediato) {
@@ -288,6 +332,27 @@ function htmlDoPainel(nonce: string): string {
     return el;
   }
 
+  /** Explica de onde o tutor tira o exercício. */
+  function desenharOrigem(info) {
+    let texto = '';
+    if (info.origem === 'aluno' && info.rotulo) {
+      texto = '🔎 Reconhecido: ' + info.rotulo + '.';
+    } else if (info.origem === 'comentario') {
+      texto = '📝 Sem enunciado aqui: o tutor vai usar o comentário do início do arquivo' + (info.rotulo ? ' (' + info.rotulo + ').' : '.');
+    } else if (info.origem === 'codigo') {
+      texto = '💡 Sem enunciado, o tutor tenta descobrir o exercício pelo seu código.';
+    }
+    $('origem').textContent = texto;
+    $('dicaProfessor').textContent = info.casosDoProfessor ? '👩‍🏫 Os casos abaixo são do professor para este exercício.' : '🔮 Antes de rodar, tente prever o que o programa vai mostrar: é o "teste de mesa".';
+    $('ajudas').textContent = info.ajudas ? 'Ajudas pedidas neste arquivo: ' + info.ajudas + '. Tente sozinho um pouco antes da próxima.' : '';
+    $('seloAjuda').textContent = info.ajudas ? info.ajudas + (info.ajudas === 1 ? ' ajuda' : ' ajudas') : '';
+    $('ponto').classList.toggle('oculto', !info.ponto);
+    if (info.ponto) {
+      $('pontoTitulo').textContent = '📍 Ponto ' + info.ponto.numero + ' de ' + info.ponto.total + ' · linha ' + info.ponto.linha;
+      $('pontoPergunta').textContent = info.ponto.pergunta;
+    }
+  }
+
   function desenharCasos() {
     const lista = $('casos');
     lista.textContent = '';
@@ -308,7 +373,7 @@ function htmlDoPainel(nonce: string): string {
         elemento('div', { className: 'caso-topo' }, [elemento('span', { textContent: 'Caso ' + (i + 1) }), remover]),
         elemento('label', { textContent: 'Entrada (o que você digitaria)' }), entrada,
         elemento('label', { textContent: 'Saída esperada' }), saida,
-        elemento('label', { textContent: '🔮 Sua previsão (teste de mesa)' }), previsao,
+        elemento('label', { textContent: '🔮 Sua previsão (opcional)' }), previsao,
         elemento('div', { className: 'resultado', id: 'resultado' + i }),
       ]);
       lista.append(bloco);
@@ -351,19 +416,23 @@ function htmlDoPainel(nonce: string): string {
     const alvo = $('resumoTestes');
     alvo.textContent = '';
     $('rodarTestes').disabled = estado === 'rodando';
-    $('rodarTestes').textContent = estado === 'rodando' ? 'Rodando testes...' : '▶ Rodar testes';
+    $('rodarTestes').textContent = estado === 'rodando' ? 'Rodando...' : '▶ Rodar testes';
+    $('seloTestes').textContent = casos.length ? casos.length + (casos.length === 1 ? ' caso' : ' casos') : '';
+    if (estado === 'rodando') { $('seloTestes').textContent = 'rodando...'; return; }
     if (estado && estado.erro) {
       alvo.append(elemento('div', { className: 'resumo falhou', textContent: estado.erro }));
       return;
     }
     if (!resultados) return;
     if (!resultados.compilou) {
+      $('seloTestes').textContent = '❌ não compilou';
       alvo.append(elemento('div', { className: 'resumo falhou', textContent: '❌ O programa não compilou:' }));
-      alvo.append(elemento('pre', { textContent: resultados.errosDeCompilacao.join('\\n') }));
+      alvo.append(elemento('pre', { textContent: resultados.errosDeCompilacao.join(QUEBRA) }));
       return;
     }
     const passaram = resultados.casos.filter(r => r.situacao === 'passou').length;
     const total = resultados.casos.length;
+    $('seloTestes').textContent = (passaram === total ? '✅ ' : '❌ ') + passaram + ' de ' + total;
     alvo.append(elemento('div', {
       className: 'resumo ' + (passaram === total ? 'passou' : 'falhou'),
       textContent: passaram === total ? '🎉 Todos os ' + total + ' casos passaram!' : passaram + ' de ' + total + ' casos passaram.',
@@ -375,35 +444,30 @@ function htmlDoPainel(nonce: string): string {
     clearTimeout(temporizador);
     temporizador = setTimeout(salvar, 600);
   });
-  $('enunciado').addEventListener('blur', salvar);
+  $('enunciado').addEventListener('blur', () => { if (temporizador) salvar(); });
   $('adicionarCaso').addEventListener('click', () => {
     casos.push({ entrada: '', saidaEsperada: '', previsao: '' });
     salvarCasos(true);
     desenharCasos();
+    desenharResumo();
     const caixas = $('casos').querySelectorAll('textarea');
-    if (caixas.length) caixas[caixas.length - 2].focus();
+    if (caixas.length) caixas[caixas.length - 3].focus();
   });
   $('rodarTestes').addEventListener('click', () => {
-    salvar();
+    if (temporizador) salvar();
     salvarCasos(true);
     vscode.postMessage({ tipo: 'rodarTestes' });
   });
-  $('naoEhExercicio').addEventListener('click', () => { vscode.postMessage({ tipo: 'naoEhExercicio', uri: uriAtual }); mostrarExercicio(false); });
-  $('ehExercicio').addEventListener('click', () => { mostrarExercicio(true); $('enunciado').focus(); });
-  $('verificar').addEventListener('click', () => { salvar(); vscode.postMessage({ tipo: 'verificar' }); });
-  $('perguntar').addEventListener('click', () => vscode.postMessage({ tipo: 'perguntar' }));
+  $('verificar').addEventListener('click', () => { if (temporizador) salvar(); vscode.postMessage({ tipo: 'verificar' }); });
   $('modo').addEventListener('click', () => vscode.postMessage({ tipo: 'modoAprendizado' }));
-  const comando = c => () => vscode.postMessage({ tipo: 'comando', comando: c });
-  $('escolherExercicio').addEventListener('click', comando('tutorSocratico.escolherExercicio'));
-  $('depurar').addEventListener('click', comando('tutorSocratico.depurar'));
-  $('explicar').addEventListener('click', comando('tutorSocratico.explicarCodigo'));
-  $('quiz').addEventListener('click', comando('tutorSocratico.quiz'));
-  $('concluido').addEventListener('click', comando('tutorSocratico.alternarConcluido'));
+  document.querySelectorAll('[data-comando]').forEach(botao =>
+    botao.addEventListener('click', () => vscode.postMessage({ tipo: 'comando', comando: botao.dataset.comando })));
 
   window.addEventListener('message', evento => {
     const msg = evento.data;
-    if (msg.tipo === 'focar') { mostrarExercicio(true); $('enunciado').focus(); return; }
+    if (msg.tipo === 'focar') { $('enunciado').focus(); return; }
     if (msg.tipo === 'resultados') {
+      $('secTestes').open = true;
       if (msg.resultados === 'rodando' || msg.resultados.erro) { desenharResumo(msg.resultados); return; }
       resultados = msg.resultados;
       desenharResumo();
@@ -420,10 +484,10 @@ function htmlDoPainel(nonce: string): string {
         gravarPendencias();
         uriAtual = msg.uri;
       }
-      $('arquivo').textContent = msg.arquivo;
+      $('arquivo').textContent = '📄 ' + msg.arquivo;
       if (mudouArquivo || document.activeElement !== $('enunciado')) {
         $('enunciado').value = msg.enunciado;
-        $('status').textContent = msg.enunciado ? 'Exercício salvo ✓' : '';
+        $('status').textContent = msg.enunciado ? 'Salvo ✓' : '';
       }
       // Não redesenha os casos enquanto o aluno digita neles.
       if (mudouArquivo || !$('casos').contains(document.activeElement)) {
@@ -432,18 +496,11 @@ function htmlDoPainel(nonce: string): string {
         desenharCasos();
         desenharResumo();
       }
-      mostrarExercicio(!msg.naoEhExercicio);
-      const info = msg.info || { ajudas: 0, concluido: false };
-      $('vinculo').classList.toggle('oculto', !info.rotulo);
-      $('vinculo').textContent = info.rotulo ? (info.concluido ? '✅ ' : '📌 ') + info.rotulo + (info.concluido ? ' (concluído)' : '') : '';
-      $('escolherExercicio').textContent = info.rotulo ? '📚 Trocar exercício da lista' : '📚 Escolher exercício da lista da aula';
-      $('ajudas').textContent = info.ajudas ? 'Ajudas pedidas ao tutor neste arquivo: ' + info.ajudas + '. Tente sozinho um pouco antes de pedir a próxima.' : '';
-      $('concluido').classList.toggle('oculto', !info.rotulo);
-      $('concluido').textContent = info.concluido ? 'Desmarcar como concluído' : 'Marcar exercício como concluído';
+      desenharOrigem(msg.info || { origem: 'codigo', ajudas: 0, casosDoProfessor: false });
     }
     $('textoModo').textContent = msg.modoAprendizado
-      ? 'Ligado: as sugestões automáticas de código (texto cinza) estão desativadas nos arquivos C. Peça ajuda quando quiser.'
-      : 'Desligado: o Copilot pode sugerir código automaticamente enquanto você digita.';
+      ? 'Modo aprendizado ligado: o Copilot não sugere código sozinho (texto cinza) nos arquivos C. Peça ajuda quando quiser.'
+      : 'Modo aprendizado desligado: o Copilot pode sugerir código automaticamente enquanto você digita.';
     $('modo').textContent = msg.modoAprendizado ? 'Desligar modo aprendizado' : 'Ligar modo aprendizado';
   });
 

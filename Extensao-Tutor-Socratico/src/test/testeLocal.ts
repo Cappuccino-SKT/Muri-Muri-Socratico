@@ -6,10 +6,12 @@ import * as os from 'os';
 import * as path from 'path';
 import { normalizarSaida, resumirResultados, rodarCasos, saidaConfere } from '../testes';
 import { aulaDoExercicio, montarCatalogo } from '../catalogo';
+import { comentarioInicial, reconhecerExercicio } from '../reconhecer';
 import { analisarCodigo, traduzirMensagemGcc } from '../didatico';
 import { carregarMaterial, selecionarAulas } from '../material';
 import { interpretarSaidaGcc, verificarComGcc } from '../gcc';
-import { instrucaoDoComando, montarContexto, numerarLinhas } from '../prompt';
+import { instrucaoDoComando, montarContexto, numerarLinhas, REGRAS_DO_TUTOR } from '../prompt';
+import { FiltroDoBloco, lerBloco, moverLinha } from '../pontos';
 
 const raiz = path.join(__dirname, '..', '..');
 const material = carregarMaterial(path.join(raiz, 'material'));
@@ -207,6 +209,42 @@ int main() {
         assert.deepStrictEqual(cat.exercicios.find(e => e.id === 'aula05-ex4')?.casosOficiais[0], { entrada: '7.5\n8\n9\n6.5', saidaEsperada: '7.75' });
     });
 
+    await teste('enunciado colado é reconhecido entre os exercícios das aulas', () => {
+        const cat = montarCatalogo(material, path.join(raiz, 'material'));
+        // Só pode ficar sem reconhecer quem tem um gêmeo quase igual em outra
+        // aula (as Aulas 08 e 10 repetem exercícios com for e com while).
+        const temGemeo = (e: typeof cat.exercicios[0]) => cat.exercicios.some(o => o !== e && reconhecerExercicio(e.enunciado, [e, o]) === undefined);
+        const naoReconhecidos = cat.exercicios.filter(e => reconhecerExercicio(e.enunciado, cat.exercicios)?.id !== e.id);
+        assert.ok(naoReconhecidos.every(temGemeo), 'não reconhecidos: ' + naoReconhecidos.filter(e => !temGemeo(e)).map(e => e.id).join(', '));
+        assert.ok(naoReconhecidos.length <= 8, `${naoReconhecidos.length} não reconhecidos`);
+        // Com outra formatação, um prefixo e sem a última frase.
+        const ex = cat.exercicios.find(e => e.id === 'aula11-ex4')!;
+        const frases = ex.enunciado.split(/(?<=\.)\s+/);
+        const colado = 'Exercício 4)\n' + (frases.length > 1 ? frases.slice(0, -1) : frases).join(' ').toUpperCase();
+        assert.strictEqual(reconhecerExercicio(colado, cat.exercicios)?.id, 'aula11-ex4', colado);
+        assert.strictEqual(reconhecerExercicio('Faça um programa que leia o nome do usuário e mostre uma saudação na tela.', cat.exercicios), undefined);
+        assert.strictEqual(reconhecerExercicio('', cat.exercicios), undefined);
+        assert.strictEqual(reconhecerExercicio(cat.exercicios.slice(0, 12).map(e => e.enunciado).join('\n'), cat.exercicios), undefined, 'vários enunciados juntos');
+    });
+
+    await teste('comentário do início do arquivo vira enunciado', () => {
+        const bloco = '/*\n * Leia 5 notas, guarde em um vetor\n * e mostre a soma e a média.\n */\n#include <stdio.h>\nint main() { return 0; }';
+        assert.strictEqual(comentarioInicial(bloco), 'Leia 5 notas, guarde em um vetor\ne mostre a soma e a média.');
+        const barras = '// Exercício: leia um número inteiro e diga se ele é par ou ímpar\n#include <stdio.h>';
+        assert.ok(comentarioInicial(barras)?.startsWith('Exercício: leia'));
+        assert.strictEqual(comentarioInicial('// Felipe\n#include <stdio.h>'), undefined, 'comentário curto não é enunciado');
+        assert.strictEqual(comentarioInicial('#include <stdio.h>\n/* leia 5 notas e mostre a soma e a média */'), undefined, 'só vale o comentário do começo');
+    });
+
+    await teste('sem enunciado, o tutor deduz o exercício pelo código', () => {
+        const semEnunciado = montarContexto(material, [], { codigo: 'int main(){}', origemDoExercicio: 'codigo' });
+        assert.ok(semEnunciado.includes('EXERCÍCIO NÃO INFORMADO') && semEnunciado.includes('Pelo seu código, parece'));
+        const doComentario = montarContexto(material, [], { codigo: '/* x */', exercicio: 'Leia 5 notas', origemDoExercicio: 'comentario' });
+        assert.ok(doComentario.includes('comentário no início do arquivo') && !doComentario.includes('NÃO INFORMADO'));
+        const doAluno = montarContexto(material, [], { codigo: 'x', exercicio: 'Leia 5 notas', origemDoExercicio: 'aluno' });
+        assert.ok(doAluno.includes('(informado pelo aluno)'));
+    });
+
     await teste('dicas offline acham os erros clássicos sem falso positivo', () => {
         const codigo = [
             'int main() {',
@@ -265,6 +303,79 @@ int main() {
     await teste('código muito longo é cortado', () => {
         const longo = Array.from({ length: 500 }, (_, i) => `// linha ${i}`).join('\n');
         assert.ok(numerarLinhas(longo).includes('mostrando 400 de 500 linhas'));
+    });
+
+    // Pontos marcados no editor: bloco escondido no fim da resposta do tutor.
+    const respostaComBloco = 'Encontrei **2 pontos**.\n\n🤔 O que o `scanf` precisa?\n<!--PONTOS\nresolvido: -\n20 | O que o scanf precisa antes da variável?\n17-18 | Quantas vezes esse laço repete?\n-->\n';
+
+    await teste('o bloco PONTOS é tirado do texto mesmo chegando em pedaços', () => {
+        for (let tamanho = 1; tamanho <= 12; tamanho++) {
+            const filtro = new FiltroDoBloco();
+            let visivel = '';
+            for (let i = 0; i < respostaComBloco.length; i += tamanho) {
+                visivel += filtro.empurrar(respostaComBloco.slice(i, i + tamanho));
+            }
+            const fim = filtro.terminar();
+            visivel += fim.resto;
+            assert.strictEqual(visivel, 'Encontrei **2 pontos**.\n\n🤔 O que o `scanf` precisa?\n', `pedaços de ${tamanho}`);
+            assert.deepStrictEqual(fim.bloco, {
+                resolvido: undefined,
+                pontos: [
+                    { linha: 20, ate: undefined, pergunta: 'O que o scanf precisa antes da variável?' },
+                    { linha: 17, ate: 18, pergunta: 'Quantas vezes esse laço repete?' },
+                ],
+            }, `pedaços de ${tamanho}`);
+        }
+    });
+
+    await teste('resposta sem bloco passa inteira, inclusive com "<" no texto', () => {
+        const filtro = new FiltroDoBloco();
+        const texto = 'Compare `i < 5` com `i <= 5`. E o <';
+        const visivel = filtro.empurrar(texto) + filtro.terminar().resto;
+        assert.strictEqual(visivel, texto);
+        assert.strictEqual(new FiltroDoBloco().terminar().bloco, undefined);
+    });
+
+    await teste('bloco lê "resolvido" e aceita variações de escrita', () => {
+        assert.strictEqual(lerBloco('\nresolvido: sim\n-->').resolvido, true);
+        assert.strictEqual(lerBloco('\nresolvido: não\n-->').resolvido, false);
+        assert.deepStrictEqual(lerBloco('\n- Linha 12 | Pergunta?\n0 | inválida\nsem número\n-->').pontos, [{ linha: 12, ate: undefined, pergunta: 'Pergunta?' }]);
+        assert.deepStrictEqual(lerBloco('\nresolvido: -\n-->'), { resolvido: undefined, pontos: [] });
+    });
+
+    await teste('linha marcada acompanha as edições acima dela', () => {
+        const editar = (inicio: number, fim: number, linhasNovas: number, noComecoDaLinha = false) => ({ inicio, fim, linhasNovas, noComecoDaLinha });
+        assert.strictEqual(moverLinha(20, editar(5, 5, 2)), 22, 'Enter acima');
+        assert.strictEqual(moverLinha(20, editar(5, 7, 0)), 18, 'linhas apagadas acima');
+        assert.strictEqual(moverLinha(20, editar(20, 20, 0)), 20, 'edição na própria linha');
+        assert.strictEqual(moverLinha(20, editar(20, 20, 1, true)), 21, 'Enter no começo da linha');
+        assert.strictEqual(moverLinha(20, editar(25, 25, 3)), 20, 'edição abaixo');
+        assert.strictEqual(moverLinha(20, editar(18, 22, 1)), 19, 'trecho em volta substituído');
+    });
+
+    await teste('/verificar pede os pontos do mais fácil ao mais difícil, e há o /proximo', () => {
+        const verificar = instrucaoDoComando('verificar')!;
+        assert.ok(verificar.includes('MAIS FÁCIL') && verificar.includes('<!--PONTOS'));
+        assert.ok(verificar.includes('SÓ o primeiro ponto'));
+        const proximo = instrucaoDoComando('proximo')!;
+        assert.ok(proximo.includes('PONTOS EM ANDAMENTO') && proximo.includes('<!--PONTOS'));
+        assert.ok(!instrucaoDoComando('pista')!.includes('<!--PONTOS'), 'a pista não mexe nas marcações');
+    });
+
+    await teste('regras pedem resposta formatada em Markdown', () => {
+        assert.ok(REGRAS_DO_TUTOR.includes('FORMATO DA RESPOSTA'));
+        assert.ok(REGRAS_DO_TUTOR.includes('`scanf`'), 'crases do template literal');
+    });
+
+    await teste('contexto mostra o ponto atual e os próximos', () => {
+        const texto = montarContexto(material, [], {
+            codigo: 'int main(){}',
+            pontos: { resolvidos: 1, pontos: [{ linha: 18, pergunta: 'Até onde vai o laço?' }, { linha: 27, ate: 28, pergunta: 'Que tipo tem a divisão?' }] },
+        });
+        assert.ok(texto.includes('## PONTOS EM ANDAMENTO'));
+        assert.ok(texto.includes('Ponto atual (2 de 3): linha 18: Até onde vai o laço?'));
+        assert.ok(texto.includes('Depois: linha 27-28: Que tipo tem a divisão?'));
+        assert.ok(!montarContexto(material, [], { codigo: 'x' }).includes('PONTOS EM ANDAMENTO'));
     });
 
     console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) falharam.`);

@@ -1,5 +1,6 @@
-// Guarda, por arquivo .c, o enunciado do exercício informado pelo aluno e se
-// ele já respondeu (ou recusou) o pedido para informar o exercício.
+// Guarda, por arquivo .c, o enunciado do exercício informado pelo aluno, o
+// exercício da aula reconhecido nele, os casos de teste e se o aluno já
+// respondeu ao pedido para informar o exercício.
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { CasoDeTeste } from './testes';
@@ -9,6 +10,9 @@ interface RegistroDoArquivo {
     exercicioId?: string;
     ajudas?: number;
     casos?: CasoDeTeste[];
+    // Os casos são os do professor e o aluno ainda não mexeu neles.
+    casosDoProfessor?: boolean;
+    // Versões antigas gravavam isto quando o aluno dizia que não era exercício.
     naoEhExercicio?: boolean;
     perguntado?: boolean;
 }
@@ -45,12 +49,6 @@ export class Exercicios {
         await this.atualizar(uri, { ajudas: this.ajudas(uri) + 1 });
     }
 
-    /** Liga o arquivo a um exercício da lista da aula. */
-    async vincular(uri: vscode.Uri, exercicioId: string, enunciado: string, casosOficiais: CasoDeTeste[]) {
-        const casos = this.casos(uri).length > 0 ? this.casos(uri) : casosOficiais;
-        await this.atualizar(uri, { exercicioId, enunciado, casos, naoEhExercicio: false, perguntado: true });
-    }
-
     casos(uri: vscode.Uri): CasoDeTeste[] {
         return this.registro(uri).casos ?? [];
     }
@@ -63,11 +61,11 @@ export class Exercicios {
                 ...(c.previsao ? { previsao: String(c.previsao) } : {}),
             }))
             .slice(0, 30);
-        await this.atualizar(uri, { casos: limpos, naoEhExercicio: false, perguntado: true });
+        await this.atualizar(uri, { casos: limpos, casosDoProfessor: false, perguntado: true });
     }
 
-    naoEhExercicio(uri: vscode.Uri): boolean {
-        return this.registro(uri).naoEhExercicio === true;
+    casosDoProfessor(uri: vscode.Uri): boolean {
+        return this.registro(uri).casosDoProfessor === true && this.casos(uri).length > 0;
     }
 
     jaPerguntado(uri: vscode.Uri): boolean {
@@ -75,16 +73,20 @@ export class Exercicios {
         return r.perguntado === true || r.naoEhExercicio === true || !!r.enunciado;
     }
 
-    async salvarEnunciado(uri: vscode.Uri, texto: string) {
-        const enunciado = texto.trim();
-        // Se o aluno reescreveu o enunciado, o arquivo deixa de estar ligado ao exercício da lista.
-        const atual = this.registro(uri);
-        const exercicioId = atual.enunciado === enunciado ? atual.exercicioId : undefined;
-        await this.atualizar(uri, { enunciado: enunciado || undefined, exercicioId, naoEhExercicio: false, perguntado: true });
-    }
-
-    async marcarNaoEhExercicio(uri: vscode.Uri) {
-        await this.atualizar(uri, { enunciado: undefined, exercicioId: undefined, casos: undefined, naoEhExercicio: true, perguntado: true });
+    /**
+     * Grava o enunciado e o exercício da aula reconhecido nele. Os casos do
+     * professor entram quando o aluno ainda não tem casos próprios (ou trocam
+     * os do exercício reconhecido antes, se o aluno não mexeu neles).
+     */
+    async salvarEnunciado(uri: vscode.Uri, texto: string, reconhecido?: { id: string; casos: CasoDeTeste[] }) {
+        const enunciado = texto.trim() || undefined;
+        const mudancas: RegistroDoArquivo = { enunciado, exercicioId: enunciado ? reconhecido?.id : undefined, perguntado: true };
+        if (mudancas.exercicioId !== this.exercicioId(uri) && (this.casos(uri).length === 0 || this.casosDoProfessor(uri))) {
+            const casos = mudancas.exercicioId ? reconhecido?.casos ?? [] : [];
+            mudancas.casos = casos;
+            mudancas.casosDoProfessor = casos.length > 0;
+        }
+        await this.atualizar(uri, mudancas);
     }
 
     async marcarPerguntado(uri: vscode.Uri) {
