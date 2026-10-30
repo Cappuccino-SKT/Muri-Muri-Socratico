@@ -10,8 +10,10 @@ import { comentarioInicial, reconhecerExercicio } from '../reconhecer';
 import { analisarCodigo, traduzirMensagemGcc } from '../didatico';
 import { carregarMaterial, selecionarAulas } from '../material';
 import { interpretarSaidaGcc, verificarComGcc } from '../gcc';
-import { instrucaoDoComando, montarContexto, numerarLinhas, REGRAS_DO_TUTOR } from '../prompt';
-import { FiltroDoBloco, lerBloco, moverLinha } from '../pontos';
+import { CRITERIOS_DE_QUALIDADE, instrucaoDoComando, montarContexto, numerarLinhas, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from '../prompt';
+import { cartaoDaNota, FiltroDoBloco, lerBloco, moverLinha, somarNota } from '../pontos';
+import { BRIEF_A_PREENCHER, ENUNCIADO_A_PREENCHER, montarCabecalho, montarComentarioDoEnunciado, temCabecalhoDoxygen, verificarIndentacao, verificarQualidade } from '../cabecalho';
+import { limparCodigo } from '../didatico';
 
 const raiz = path.join(__dirname, '..', '..');
 const material = carregarMaterial(path.join(raiz, 'material'));
@@ -376,6 +378,122 @@ int main() {
         assert.ok(texto.includes('Ponto atual (2 de 3): linha 18: Até onde vai o laço?'));
         assert.ok(texto.includes('Depois: linha 27-28: Que tipo tem a divisão?'));
         assert.ok(!montarContexto(material, [], { codigo: 'x' }).includes('PONTOS EM ANDAMENTO'));
+    });
+
+    // Qualidade do código: cabeçalho Doxygen, enunciado em comentário e indentação.
+    const programaSimples = '#include <stdio.h>\n\nint main()\n{\n    int soma = 0;\n    return 0;\n}\n';
+    const cabecalho = montarCabecalho({ arquivo: 'media.c', autor: 'Maria Silva', data: new Date(2026, 9, 30) });
+    const enunciadoMedia = 'Faça um programaSimples que leia cinco notas de um aluno e mostre a média final.';
+    const regras = (codigo: string) => verificarQualidade(codigo, limparCodigo(codigo)).map(p => p.regra);
+
+    await teste('cabeçalho Doxygen no estilo do material (\\file, \\brief, \\author, \\date)', () => {
+        assert.strictEqual(cabecalho, '/**\n * \\file media.c\n * \\brief ' + BRIEF_A_PREENCHER + '\n * \\author Maria Silva\n * \\date 30/10/2026\n */\n');
+        assert.ok(montarComentarioDoEnunciado('linha 1\nfim */ aqui').includes(' * fim * / aqui'), 'o enunciado não pode fechar o comentário');
+        assert.ok(montarComentarioDoEnunciado().includes(ENUNCIADO_A_PREENCHER));
+    });
+
+    await teste('o enunciado é lido do comentário abaixo do cabeçalho Doxygen', () => {
+        const codigo = cabecalho + '\n' + montarComentarioDoEnunciado(enunciadoMedia) + '\n' + programaSimples;
+        assert.ok(temCabecalhoDoxygen(codigo));
+        assert.strictEqual(comentarioInicial(codigo), enunciadoMedia);
+        assert.strictEqual(comentarioInicial(cabecalho + '\n' + programaSimples), undefined, 'só o cabeçalho não é enunciado');
+        assert.strictEqual(comentarioInicial(cabecalho + '\n' + montarComentarioDoEnunciado() + programaSimples), undefined, 'o texto "cole aqui" não é enunciado');
+        assert.strictEqual(comentarioInicial('// ' + enunciadoMedia + '\n' + programaSimples), enunciadoMedia, 'comentário de linha continua valendo');
+    });
+
+    await teste('avisos de cabeçalho: falta, incompleto, sem enunciado e completo', () => {
+        assert.deepStrictEqual(regras(programaSimples), ['cabecalho-doxygen']);
+        assert.deepStrictEqual(regras(cabecalho + programaSimples), ['cabecalho-incompleto']);
+        const preenchido = cabecalho.replace(BRIEF_A_PREENCHER, 'Calcula a média de cinco notas.');
+        assert.deepStrictEqual(regras(preenchido + programaSimples), ['enunciado-no-comentario']);
+        assert.deepStrictEqual(regras(preenchido + montarComentarioDoEnunciado(enunciadoMedia) + programaSimples), []);
+        assert.deepStrictEqual(regras('#include <stdio.h>\n'), [], 'arquivo sem main ainda não é cobrado');
+        assert.deepStrictEqual(regras(preenchido + '// Maria Silva\n' + programaSimples), ['enunciado-no-comentario'], 'um nome solto não é o enunciado');
+    });
+
+    await teste('indentação: aponta a linha que não entrou no bloco, uma vez por bloco', () => {
+        const torto = 'int main()\n{\nint x = 0;\nint y = 1;\n    if (x) {\n    y = 2;\n    }\n    switch (y) {\n    case 1:\n        break;\n    }\n}\n';
+        const problemas = verificarIndentacao(limparCodigo(torto));
+        assert.deepStrictEqual(problemas.map(p => p.linha), [3, 6]);
+        assert.ok(problemas[0].mensagem.includes('aberto na linha 2'));
+        const certo = 'int main() {\n\tint x = 0;\n\tif (x)\n\t{\n\t\tx++;\n\t}\n\treturn 0;\n}\n';
+        assert.deepStrictEqual(verificarIndentacao(limparCodigo(certo)), []);
+        const comentarioComChave = 'int main() {\n    /* { */\n    return 0;\n}\n';
+        assert.deepStrictEqual(verificarIndentacao(limparCodigo(comentarioComChave)), [], 'chave em comentário não conta');
+    });
+
+    await teste('regras pedem qualidade do código, depois de o programaSimples funcionar', () => {
+        assert.ok(REGRAS_DO_TUTOR.includes('QUALIDADE DO CÓDIGO'));
+        assert.ok(REGRAS_DO_TUTOR.includes(' * \\file media.c'), 'modelo do cabeçalho com \\file');
+        assert.ok(REGRAS_DO_TUTOR.includes('```c\n/**'), 'modelo em bloco de código');
+        assert.ok(instrucaoDoComando('verificar')!.includes('por ÚLTIMO, os pontos de QUALIDADE'));
+    });
+
+    await teste('em qualidade o tutor responde direto e ensina os atalhos, sem mexer na lógica', () => {
+        assert.ok(REGRAS_DO_TUTOR.includes('A única exceção é a QUALIDADE DO CÓDIGO'));
+        assert.ok(REGRAS_DO_TUTOR.includes('você PODE e DEVE dar a resposta direta'));
+        assert.ok(REGRAS_DO_TUTOR.includes('não mexa na lógica'));
+        for (const atalho of ['Ctrl+Alt+H', 'doxy e apertar Tab', 'doxyf', 'Shift+Alt+F', 'F2']) {
+            assert.ok(REGRAS_DO_TUTOR.includes(atalho), atalho);
+        }
+    });
+
+    // Verificação de qualidade: nota de 0 a 1000 pela rubrica.
+    const blocoDeQualidade = '\nresolvido: -\nnota: Cabeçalho e enunciado | 150 | 150\nnota: Indentação e espaçamento | 120 | 200\nnota: Nomes | 100 | 250\nnota: Comentários | 80 | 200\nnota: Organização | 150 | 200\n7 | Renomeie x para soma\n-->';
+
+    await teste('bloco da qualidade traz a nota de cada critério da rubrica', () => {
+        const bloco = lerBloco(blocoDeQualidade);
+        assert.deepStrictEqual(bloco.criterios!.map(c => [c.nome, c.pontos, c.maximo]), [
+            ['Cabeçalho e enunciado', 150, 150], ['Indentação e espaçamento', 120, 200], ['Nomes', 100, 250], ['Comentários', 80, 200], ['Organização', 150, 200]]);
+        assert.deepStrictEqual(bloco.pontos, [{ linha: 7, ate: undefined, pergunta: 'Renomeie x para soma' }]);
+        assert.deepStrictEqual(CRITERIOS_DE_QUALIDADE.map(c => c.nome), bloco.criterios!.map(c => c.nome), 'nomes iguais aos da rubrica');
+        assert.strictEqual(CRITERIOS_DE_QUALIDADE.reduce((t, c) => t + c.maximo, 0), 1000);
+        assert.strictEqual(lerBloco('\nnota: Nomes | 180/250\n-->').criterios![0].pontos, 180, 'aceita "180/250"');
+    });
+
+    await teste('a extensão soma a nota (e corrige pontos fora da faixa)', () => {
+        assert.strictEqual(somarNota(lerBloco(blocoDeQualidade).criterios!), 600);
+        assert.strictEqual(somarNota([{ nome: 'A', pontos: 999, maximo: 200 }, { nome: 'B', pontos: 0, maximo: 800 }]), 200, 'pontos acima do máximo');
+        assert.strictEqual(somarNota([{ nome: 'A', pontos: 50, maximo: 100 }]), 500, 'rubrica incompleta vira escala de 1000');
+        assert.strictEqual(somarNota([]), undefined);
+    });
+
+    await teste('cartão da nota mostra a faixa, a evolução e a tabela', () => {
+        const criterios = lerBloco(blocoDeQualidade).criterios!;
+        const cartao = cartaoDaNota(criterios, 450);
+        assert.ok(cartao.startsWith('🏅 **Qualidade do código: 600 / 1000** (bom, mas dá para melhorar) · ⬆️ +150 desde a última verificação'), cartao);
+        assert.ok(cartao.includes('| Nomes | 100 / 250 |'));
+        assert.ok(cartaoDaNota(criterios, 700).includes('⬇️ -100'));
+        assert.ok(!cartaoDaNota(criterios).includes('última verificação'), 'primeira nota não compara');
+    });
+
+    await teste('/qualidade avalia só a qualidade, com rubrica, nota e resposta direta', () => {
+        const qualidade = instrucaoDoComando('qualidade')!;
+        assert.ok(qualidade.includes('Avalie SÓ a qualidade') && qualidade.includes('NÃO a lógica'));
+        assert.ok(qualidade.includes('RUBRICA DA NOTA DE QUALIDADE (total 1000)'));
+        assert.ok(qualidade.includes('nota: NOME DO CRITÉRIO | PONTOS | MÁXIMO') && qualidade.includes('<!--PONTOS'));
+        assert.ok(qualidade.includes('dê a resposta direta'));
+        assert.ok(PROXIMO_NA_QUALIDADE.includes('nota: NOME DO CRITÉRIO') && !instrucaoDoComando('proximo')!.includes('RUBRICA'));
+        const contexto = montarContexto(material, [], { codigo: 'x', pontos: { resolvidos: 0, tipo: 'qualidade', pontos: [{ linha: 3, pergunta: 'Renomeie x' }] } });
+        assert.ok(contexto.includes('## PONTOS EM ANDAMENTO (da verificação de qualidade do código;'));
+    });
+
+    await teste('conferência no fim: o tutor recebe os pontos que o aluno diz ter feito', () => {
+        assert.ok(instrucaoDoComando('qualidade')!.includes('comece com **Conferência:**'));
+        const contexto = montarContexto(material, [], { codigo: 'x', pontos: { resolvidos: 2, tipo: 'qualidade', pontos: [], feitos: [{ linha: 3, pergunta: 'Renomeie x para soma' }, { linha: 9, ate: 12, pergunta: 'Indente o laço' }] } });
+        assert.ok(contexto.includes('## PONTOS DE QUALIDADE QUE O ALUNO DIZ TER FEITO'));
+        assert.ok(contexto.includes('- linha 3 (na época): Renomeie x para soma') && contexto.includes('- linha 9-12 (na época): Indente o laço'));
+        assert.ok(!contexto.includes('## PONTOS EM ANDAMENTO'), 'nenhum ponto pendente');
+    });
+
+    await teste('snippets doxy e doxyf no estilo da Aula 16', () => {
+        const snippets = JSON.parse(fs.readFileSync(path.join(raiz, 'snippets', 'c.json'), 'utf8'));
+        const porPrefixo = (prefixo: string) => (Object.values(snippets) as { prefix: string; body: string[] }[]).find(s => s.prefix === prefixo)!;
+        // No snippet, "\\\\" vira uma barra só ao inserir.
+        assert.ok(porPrefixo('doxy').body.includes(' * \\\\file $TM_FILENAME'));
+        assert.ok(porPrefixo('doxy').body.some(l => l.includes('Enunciado:')));
+        assert.ok(porPrefixo('doxyf').body.some(l => l.startsWith(' * \\\\param')));
+        assert.ok(porPrefixo('doxyf').body.some(l => l.startsWith(' * \\\\return')));
     });
 
     console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) falharam.`);

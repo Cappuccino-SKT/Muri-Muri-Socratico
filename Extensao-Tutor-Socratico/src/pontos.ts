@@ -14,6 +14,50 @@ export interface BlocoDePontos {
     // true/false quando o aluno pediu para conferir o ponto atual (/proximo).
     resolvido?: boolean;
     pontos: Ponto[];
+    // Só na verificação de qualidade: a nota de cada critério da rubrica.
+    criterios?: Criterio[];
+}
+
+export interface Criterio {
+    nome: string;
+    pontos: number;
+    maximo: number;
+}
+
+/**
+ * Nota de 0 a 1000: soma dos critérios, cada um limitado ao seu máximo. A
+ * soma é feita aqui, e não pelo modelo, para a conta sempre fechar.
+ */
+export function somarNota(criterios: Criterio[]): number | undefined {
+    const maximo = criterios.reduce((total, c) => total + c.maximo, 0);
+    if (maximo <= 0) {
+        return undefined;
+    }
+    const obtido = criterios.reduce((total, c) => total + Math.min(Math.max(c.pontos, 0), c.maximo), 0);
+    return Math.round(obtido * 1000 / maximo);
+}
+
+export function faixaDaNota(nota: number): string {
+    return nota >= 900 ? 'excelente' : nota >= 750 ? 'muito bom' : nota >= 500 ? 'bom, mas dá para melhorar' : nota >= 250 ? 'precisa de atenção' : 'vamos organizar';
+}
+
+/** Nota, comparação com a verificação anterior e a tabela dos critérios, em Markdown. */
+export function cartaoDaNota(criterios: Criterio[], anterior?: number): string {
+    const nota = somarNota(criterios) ?? 0;
+    let evolucao = '';
+    if (anterior !== undefined) {
+        const diferenca = nota - anterior;
+        evolucao = diferenca > 0 ? ` · ⬆️ +${diferenca} desde a última verificação`
+            : diferenca < 0 ? ` · ⬇️ ${diferenca} desde a última verificação`
+            : ' · igual à última verificação';
+    }
+    return [
+        `🏅 **Qualidade do código: ${nota} / 1000** (${faixaDaNota(nota)})${evolucao}`,
+        '',
+        '| Critério | Pontos |',
+        '|---|---|',
+        ...criterios.map(c => `| ${c.nome} | ${Math.min(Math.max(c.pontos, 0), c.maximo)} / ${c.maximo} |`),
+    ].join('\n');
 }
 
 const INICIO_DO_BLOCO = /<!--\s*PONTOS/i;
@@ -71,6 +115,12 @@ export function lerBloco(texto: string): BlocoDePontos {
         if (resolvido) {
             const valor = resolvido[1].toLowerCase();
             bloco.resolvido = valor === 'sim' ? true : /^n[aã]o$/.test(valor) ? false : undefined;
+            continue;
+        }
+        // "nota: Nomes | 180 | 250" = critério, pontos obtidos e máximo.
+        const nota = /^nota\s*:\s*([^|]+?)\s*\|\s*(\d+)\s*(?:\/|\|)\s*(\d+)\s*$/i.exec(linha);
+        if (nota) {
+            (bloco.criterios ??= []).push({ nome: nota[1], pontos: Number(nota[2]), maximo: Number(nota[3]) });
             continue;
         }
         const ponto = /^(?:linhas?\s*)?(\d+)(?:\s*(?:-|–|a)\s*(\d+))?\s*\|\s*(.+)$/i.exec(linha);

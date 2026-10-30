@@ -1,21 +1,30 @@
 // Marca no editor o ponto que o tutor pediu para o aluno revisar: seta na
 // margem, linha destacada, a pergunta no fim da linha e botões em cima dela.
 // Só o ponto atual aparece; quando o aluno o resolve, vem o próximo.
+// Na verificação do código, cada "Já corrigi" é conferido pelo tutor. Na de
+// qualidade, o aluno marca os pontos como feitos sem gastar a IA, e o tutor
+// confere todos de uma vez no fim, com a nota nova.
 import * as vscode from 'vscode';
 import { BlocoDePontos, moverLinha, Ponto } from './pontos';
+
+export type TipoDeVerificacao = 'codigo' | 'qualidade';
 
 export interface PontosDoArquivo {
     pontos: Ponto[];
     resolvidos: number;
+    tipo: TipoDeVerificacao;
+    // Na qualidade: pontos que o aluno marcou como feitos e o tutor ainda não conferiu.
+    feitos: Ponto[];
 }
 
 export interface PontoAtual {
     ponto: Ponto;
     numero: number;
     total: number;
+    tipo: TipoDeVerificacao;
 }
 
-const COMANDOS_DO_PONTO = ['tutorSocratico.proximoPonto', 'tutorSocratico.pistaDoPonto', 'tutorSocratico.limparPontos'];
+const COMANDOS_DO_PONTO = ['tutorSocratico.proximoPonto', 'tutorSocratico.pistaDoPonto', 'tutorSocratico.limparPontos', 'tutorSocratico.verificarQualidade'];
 
 export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
     private readonly porArquivo = new Map<string, PontosDoArquivo>();
@@ -41,16 +50,38 @@ export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
     }
 
     /** Guarda os pontos que vieram na resposta do tutor. */
-    definir(uri: vscode.Uri, bloco: BlocoDePontos, conferindo: boolean) {
+    definir(uri: vscode.Uri, bloco: BlocoDePontos, conferindo: boolean, tipo: TipoDeVerificacao = 'codigo') {
         const chave = uri.toString();
         const antes = this.porArquivo.get(chave);
         const resolvidos = conferindo && antes ? antes.resolvidos + (bloco.resolvido ? 1 : 0) : 0;
         if (bloco.pontos.length === 0) {
             this.porArquivo.delete(chave);
         } else {
-            this.porArquivo.set(chave, { pontos: bloco.pontos, resolvidos });
+            // Ao conferir, continua no mesmo tipo de verificação.
+            this.porArquivo.set(chave, { pontos: bloco.pontos, resolvidos, tipo: conferindo && antes ? antes.tipo : tipo, feitos: [] });
         }
         this.redesenhar();
+    }
+
+    /**
+     * Qualidade: o aluno diz que fez o ponto atual. Passa para o próximo sem
+     * chamar a IA e devolve quantos ainda faltam.
+     */
+    marcarFeito(uri: vscode.Uri): number {
+        const estado = this.porArquivo.get(uri.toString());
+        if (!estado || estado.pontos.length === 0) {
+            return 0;
+        }
+        estado.feitos.push(estado.pontos.shift()!);
+        estado.resolvidos++;
+        this.redesenhar();
+        return estado.pontos.length;
+    }
+
+    /** Qualidade: todos os pontos foram marcados como feitos e esperam a conferência do tutor. */
+    esperandoConferencia(uri: vscode.Uri): Ponto[] | undefined {
+        const estado = this.porArquivo.get(uri.toString());
+        return estado && estado.pontos.length === 0 && estado.feitos.length > 0 ? estado.feitos : undefined;
     }
 
     limpar(uri?: vscode.Uri) {
@@ -68,10 +99,10 @@ export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
 
     atual(uri: vscode.Uri): PontoAtual | undefined {
         const estado = this.porArquivo.get(uri.toString());
-        if (!estado) {
+        if (!estado || estado.pontos.length === 0) {
             return undefined;
         }
-        return { ponto: estado.pontos[0], numero: estado.resolvidos + 1, total: estado.resolvidos + estado.pontos.length };
+        return { ponto: estado.pontos[0], numero: estado.resolvidos + 1, total: estado.resolvidos + estado.pontos.length, tipo: estado.tipo };
     }
 
     /** Leva o cursor até o ponto atual. */
@@ -134,7 +165,7 @@ export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
                     hoverMessage: linha === inicio ? this.dica(atual) : undefined,
                     renderOptions: linha === inicio ? {
                         after: {
-                            contentText: `  ◀ 🎓 Ponto ${atual.numero} de ${atual.total}: ${encurtar(atual.ponto.pergunta, 70)}`,
+                            contentText: `  ◀ ${rotulo(atual)}: ${encurtar(atual.ponto.pergunta, 70)}`,
                             color: new vscode.ThemeColor('editorCodeLens.foreground'),
                             fontStyle: 'italic',
                         },
@@ -153,23 +184,31 @@ export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
         }
         const linha = Math.min(atual.ponto.linha, documento.lineCount) - 1;
         const local = new vscode.Range(linha, 0, linha, 0);
-        return [
-            new vscode.CodeLens(local, { title: `🎓 Ponto ${atual.numero} de ${atual.total}`, command: 'tutorSocratico.irParaPonto', arguments: [documento.uri] }),
-            new vscode.CodeLens(local, { title: '✅ Já corrigi, conferir', command: 'tutorSocratico.proximoPonto', arguments: [documento.uri] }),
-            new vscode.CodeLens(local, { title: '💡 Pista', command: 'tutorSocratico.pistaDoPonto', arguments: [documento.uri] }),
-            new vscode.CodeLens(local, { title: '✖ Esconder', command: 'tutorSocratico.limparPontos', arguments: [documento.uri] }),
-        ];
+        return botoesDoPonto(atual).map(([title, command]) => new vscode.CodeLens(local, { title, command, arguments: [documento.uri] }));
     }
 
     private dica(atual: PontoAtual): vscode.MarkdownString {
         const texto = new vscode.MarkdownString(
-            `**🎓 Ponto ${atual.numero} de ${atual.total}**\n\n${atual.ponto.pergunta}\n\n` +
-            '[✅ Já corrigi, conferir](command:tutorSocratico.proximoPonto) · ' +
-            '[💡 Pista](command:tutorSocratico.pistaDoPonto) · ' +
-            '[✖ Esconder](command:tutorSocratico.limparPontos)');
+            `**${rotulo(atual)}**\n\n${atual.ponto.pergunta}\n\n` +
+            botoesDoPonto(atual).slice(1).map(([titulo, comando]) => `[${titulo}](command:${comando})`).join(' · '));
         texto.isTrusted = { enabledCommands: COMANDOS_DO_PONTO };
         return texto;
     }
+}
+
+/** Botões em cima da linha marcada: [texto, comando]. O primeiro leva até o ponto. */
+function botoesDoPonto(atual: PontoAtual): [string, string][] {
+    const inicio: [string, string] = [rotulo(atual), 'tutorSocratico.irParaPonto'];
+    const esconder: [string, string] = ['✖ Esconder', 'tutorSocratico.limparPontos'];
+    return atual.tipo === 'qualidade'
+        ? [inicio, ['✅ Feito, próximo', 'tutorSocratico.proximoPonto'], ['💡 Como fazer?', 'tutorSocratico.pistaDoPonto'],
+            ['✨ Conferir tudo agora', 'tutorSocratico.verificarQualidade'], esconder]
+        : [inicio, ['✅ Já corrigi, conferir', 'tutorSocratico.proximoPonto'], ['💡 Pista', 'tutorSocratico.pistaDoPonto'], esconder];
+}
+
+/** "🎓 Ponto 1 de 3" na verificação do código; "✨ Qualidade 1 de 3" na de qualidade. */
+function rotulo(atual: PontoAtual): string {
+    return `${atual.tipo === 'qualidade' ? '✨ Qualidade' : '🎓 Ponto'} ${atual.numero} de ${atual.total}`;
 }
 
 function encurtar(texto: string, maximo: number): string {

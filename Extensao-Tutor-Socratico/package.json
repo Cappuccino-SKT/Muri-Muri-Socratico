@@ -2,7 +2,7 @@
   "name": "tutor-socratico-c",
   "displayName": "Muri-Muri Socratico",
   "description": "Tutor de IA para Fundamentos de Programação em C: ajuda com perguntas e pistas, sem entregar a solução, e indica a videoaula certa para cada dúvida.",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "publisher": "Muri-Muri-Socratico",
   "author": {
     "name": "FelipeSKT"
@@ -24,6 +24,15 @@
   "homepage": "https://github.com/FelipeSKT/Muri-Muri-Socratico/tree/main/Extensao-Tutor-Socratico#readme",
   "engines": {
     "vscode": "^1.100.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Em modo restrito, o chat, o painel e as dicas funcionam, mas o tutor não compila nem executa os programas da pasta.",
+      "restrictedConfigurations": [
+        "tutorSocratico.caminhoGcc"
+      ]
+    }
   },
   "categories": [
     "AI",
@@ -56,6 +65,10 @@
           {
             "name": "verificar",
             "description": "Revisar o código aberto (e o exercício) e apontar onde olhar, sem corrigir"
+          },
+          {
+            "name": "qualidade",
+            "description": "Avaliar a qualidade do código (nomes, comentários, Doxygen, indentação), com nota de 0 a 1000"
           },
           {
             "name": "proximo",
@@ -197,6 +210,37 @@
         "command": "tutorSocratico.limparPontos",
         "title": "Esconder as marcações do tutor no código",
         "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.liberarIa",
+        "title": "Liberar a IA para o tutor (permissão do Copilot)",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.abrirGuia",
+        "title": "Abrir o guia de primeiros passos",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.conferirProntidao",
+        "title": "Conferir se está tudo pronto para usar o tutor",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.resolverPendencia",
+        "title": "Resolver pendência",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.inserirCabecalho",
+        "title": "Inserir cabeçalho Doxygen e o enunciado",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.verificarQualidade",
+        "title": "Verificar a qualidade do código (nota de 0 a 1000)",
+        "category": "Tutor Socrático",
+        "icon": "$(sparkle)"
       }
     ],
     "menus": {
@@ -210,6 +254,11 @@
       "editor/context": [
         {
           "command": "tutorSocratico.verificarCodigo",
+          "when": "editorLangId == c",
+          "group": "navigation@99"
+        },
+        {
+          "command": "tutorSocratico.verificarQualidade",
           "when": "editorLangId == c",
           "group": "navigation@99"
         },
@@ -259,6 +308,18 @@
         {
           "command": "tutorSocratico.limparPontos",
           "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.resolverPendencia",
+          "when": "false"
+        },
+        {
+          "command": "tutorSocratico.inserirCabecalho",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.verificarQualidade",
+          "when": "editorLangId == c"
         }
       ]
     },
@@ -289,9 +350,115 @@
           "type": "boolean",
           "default": true,
           "description": "Mostra dicas sobre erros clássicos de iniciantes enquanto você digita (sem IA, sem internet) e traduz as mensagens do GCC para o português."
+        },
+        "tutorSocratico.dicasDeQualidade": {
+          "type": "boolean",
+          "default": true,
+          "description": "Avisa (sem IA) quando falta o cabeçalho Doxygen ou o enunciado em comentário no início do arquivo, e quando uma linha dentro de um bloco { } não está indentada."
         }
       }
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "primeirosPassos",
+        "title": "Primeiros passos com o Muri-Muri Socratico",
+        "description": "Do zero até o tutor funcionando: conta no GitHub, Copilot, permissão para usar a IA, pasta e GCC.",
+        "steps": [
+          {
+            "id": "conta",
+            "title": "1. Criar sua conta no GitHub",
+            "description": "A IA do tutor vem do GitHub Copilot, que tem um plano gratuito, mas precisa de uma conta no GitHub. Já tem conta? Pule para o passo 2.\n[Criar conta no GitHub](https://github.com/signup)",
+            "media": {
+              "markdown": "guia/1-conta-github.md"
+            },
+            "completionEvents": [
+              "onLink:https://github.com/signup",
+              "onContext:tutorSocratico.copilotPronto"
+            ]
+          },
+          {
+            "id": "copilot",
+            "title": "2. Entrar no VS Code e ativar o Copilot",
+            "description": "Entre com a sua conta do GitHub para ativar o Copilot Free. No computador da universidade, saia da conta ao terminar.\n[Entrar com o GitHub](command:workbench.action.chat.triggerSetup)",
+            "media": {
+              "markdown": "guia/2-entrar-copilot.md"
+            },
+            "completionEvents": [
+              "onContext:tutorSocratico.copilotPronto"
+            ]
+          },
+          {
+            "id": "permissao",
+            "title": "3. Deixar o tutor usar a IA",
+            "description": "O VS Code pergunta se o Muri-Muri Socratico pode usar a IA: clique em \"Permitir\". Se alguém clicou em \"Não permitir\", libere aqui.\n[Liberar a IA para o tutor](command:tutorSocratico.liberarIa)",
+            "media": {
+              "markdown": "guia/3-permissao.md"
+            },
+            "completionEvents": [
+              "onContext:tutorSocratico.iaLiberada"
+            ]
+          },
+          {
+            "id": "modelo",
+            "title": "4. Escolher o modelo de IA",
+            "description": "No chat, clique no nome do modelo (embaixo da caixa de mensagem) e escolha \"Auto\" ou um modelo sem custo extra.\n[Abrir o chat](command:workbench.action.chat.open)",
+            "media": {
+              "markdown": "guia/4-modelo.md"
+            },
+            "completionEvents": [
+              "onCommand:workbench.action.chat.open"
+            ]
+          },
+          {
+            "id": "pasta",
+            "title": "5. Confiar na pasta dos exercícios",
+            "description": "Em modo restrito, o tutor conversa, mas não compila nem testa. Se a pasta é dos seus exercícios, confie nela.\n[Confiar nesta pasta](command:workbench.trust.manage)",
+            "media": {
+              "markdown": "guia/5-pasta.md"
+            },
+            "completionEvents": [
+              "onContext:isWorkspaceTrusted"
+            ]
+          },
+          {
+            "id": "gcc",
+            "title": "6. Conferir o GCC",
+            "description": "O GCC compila o seu programa e roda os testes. Nos computadores da universidade, ele normalmente já está instalado.\n[Conferir o GCC](command:tutorSocratico.conferirProntidao)",
+            "media": {
+              "markdown": "guia/6-gcc.md"
+            },
+            "completionEvents": [
+              "onContext:tutorSocratico.gccOk"
+            ]
+          },
+          {
+            "id": "usar",
+            "title": "7. Usar o tutor",
+            "description": "Abra o painel do tutor, cole o enunciado, coloque o cabeçalho e clique em \"Verificar meu código\".\n[Abrir o painel do tutor](command:tutorSocratico.exercicio.focus)",
+            "media": {
+              "markdown": "guia/7-usar.md"
+            },
+            "completionEvents": [
+              "onView:tutorSocratico.exercicio"
+            ]
+          }
+        ]
+      }
+    ],
+    "snippets": [
+      {
+        "language": "c",
+        "path": "./snippets/c.json"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "tutorSocratico.inserirCabecalho",
+        "key": "ctrl+alt+h",
+        "mac": "cmd+alt+h",
+        "when": "editorTextFocus && editorLangId == c"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p ./",

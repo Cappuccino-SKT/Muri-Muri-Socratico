@@ -15,7 +15,11 @@ interface RegistroDoArquivo {
     // Versões antigas gravavam isto quando o aluno dizia que não era exercício.
     naoEhExercicio?: boolean;
     perguntado?: boolean;
+    // Notas de qualidade do código (0 a 1000), da mais antiga para a mais nova.
+    notas?: number[];
 }
+
+const MAX_NOTAS = 10;
 
 const CHAVE = 'tutorSocratico.exercicios';
 const MAX_REGISTROS = 500;
@@ -47,6 +51,14 @@ export class Exercicios {
 
     async somarAjuda(uri: vscode.Uri) {
         await this.atualizar(uri, { ajudas: this.ajudas(uri) + 1 });
+    }
+
+    notasDeQualidade(uri: vscode.Uri): number[] {
+        return this.registro(uri).notas ?? [];
+    }
+
+    async salvarNotaDeQualidade(uri: vscode.Uri, nota: number) {
+        await this.atualizar(uri, { notas: [...this.notasDeQualidade(uri), nota].slice(-MAX_NOTAS) });
     }
 
     casos(uri: vscode.Uri): CasoDeTeste[] {

@@ -1,0 +1,31 @@
+{
+  "Cabeçalho Doxygen do arquivo, com o enunciado": {
+    "prefix": "doxy",
+    "description": "Cabeçalho Doxygen (\\file, \\brief, \\author, \\date) e, abaixo, o comentário com o enunciado do exercício. Atalho com o enunciado do painel: Ctrl+Alt+H.",
+    "body": [
+      "/**",
+      " * \\\\file $TM_FILENAME",
+      " * \\\\brief ${1:o que o programa faz, em uma frase}",
+      " * \\\\author ${2:seu nome}",
+      " * \\\\date $CURRENT_DATE/$CURRENT_MONTH/$CURRENT_YEAR",
+      " */",
+      "",
+      "/*",
+      " * Enunciado:",
+      " * ${3:cole aqui o enunciado do exercício}",
+      " */",
+      "$0"
+    ]
+  },
+  "Comentário Doxygen de uma função": {
+    "prefix": "doxyf",
+    "description": "Comentário Doxygen antes de uma função, no estilo do material da Aula 16 (descrição, \\param e \\return).",
+    "body": [
+      "/**",
+      " * ${1:o que a função faz}",
+      " * \\\\param ${2:parametro} ${3:o que ele representa}",
+      " * \\\\return ${4:o que a função devolve}",
+      " */"
+    ]
+  }
+}

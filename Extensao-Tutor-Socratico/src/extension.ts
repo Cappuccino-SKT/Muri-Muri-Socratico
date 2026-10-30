@@ -2,14 +2,16 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { carregarMaterial, Material, selecionarAulas } from './material';
 import { verificarComGcc } from './gcc';
-import { instrucaoDoComando, montarContexto, REGRAS_DO_TUTOR } from './prompt';
+import { instrucaoDoComando, montarContexto, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from './prompt';
 import { Exercicios } from './exercicios';
 import { ID_PAINEL, InfoDoPainel, PainelExercicio } from './painel';
 import { CasoDeTeste, resumirResultados, ResultadoDosTestes, rodarCasos } from './testes';
 import { aulaDoExercicio, Catalogo, montarCatalogo } from './catalogo';
-import { analisarCodigo, traduzirMensagemGcc } from './didatico';
+import { analisarCodigo, limparCodigo, traduzirMensagemGcc } from './didatico';
+import { comentariosDoInicio, montarCabecalho, montarComentarioDoEnunciado, temCabecalhoDoxygen, temEnunciadoNoComentario, verificarQualidade, BRIEF_A_PREENCHER } from './cabecalho';
+import { IdDaPendencia, JUSTIFICATIVA, Prontidao } from './prontidao';
 import { comentarioInicial, reconhecerExercicio } from './reconhecer';
-import { BlocoDePontos, FiltroDoBloco } from './pontos';
+import { BlocoDePontos, cartaoDaNota, FiltroDoBloco, somarNota } from './pontos';
 import { Marcacoes } from './marcacoes';
 
 const ID_PARTICIPANTE = 'tutor-socratico.tutor';
@@ -24,6 +26,9 @@ let exercicios: Exercicios;
 let painel: PainelExercicio;
 let barraModo: vscode.StatusBarItem;
 let marcacoes: Marcacoes;
+let prontidao: Prontidao;
+let acessoAosModelos: vscode.LanguageModelAccessInformation;
+let contextoGlobal: vscode.ExtensionContext;
 // Último resultado dos testes por arquivo (só vale enquanto os casos não mudarem).
 const ultimosTestes = new Map<string, { casos: string; resultado: ResultadoDosTestes }>();
 
@@ -35,6 +40,9 @@ export function activate(context: vscode.ExtensionContext) {
     diagnosticosDicas = vscode.languages.createDiagnosticCollection('Tutor Socrático (dicas)');
     exercicios = new Exercicios(context.globalState);
     marcacoes = new Marcacoes(context.extensionUri);
+    prontidao = new Prontidao(context);
+    acessoAosModelos = context.languageModelAccessInformation;
+    contextoGlobal = context;
     painel =new PainelExercicio(exercicios, salvarEnunciado, modoAprendizadoLigado, ultimoResultado, infoDoExercicio);
 
     const tutor = vscode.chat.createChatParticipant(ID_PARTICIPANTE, responder);
@@ -56,6 +64,17 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('tutorSocratico.abrirVideo', (url: string) => vscode.env.openExternal(vscode.Uri.parse(url))),
         vscode.workspace.onDidOpenTextDocument(documento => analisarDocumento(documento)),
         marcacoes,
+        prontidao,
+        prontidao.onDidChange(itens => painel.mostrarProntidao(itens)),
+        vscode.commands.registerCommand('tutorSocratico.liberarIa', () => prontidao.liberarIa()),
+        vscode.commands.registerCommand('tutorSocratico.abrirGuia', () => prontidao.abrirGuia()),
+        vscode.commands.registerCommand('tutorSocratico.conferirProntidao', () => prontidao.conferir()),
+        vscode.commands.registerCommand('tutorSocratico.resolverPendencia', (id: IdDaPendencia) => prontidao.resolver(id)),
+        vscode.commands.registerCommand('tutorSocratico.inserirCabecalho', inserirCabecalho),
+        vscode.workspace.onDidGrantWorkspaceTrust(() => {
+            // Pasta liberada: agora dá para compilar os arquivos abertos.
+            vscode.workspace.textDocuments.filter(d => d.languageId === 'c').forEach(d => verificarDocumento(d, false));
+        }),
         vscode.languages.registerCodeLensProvider({ language: 'c' }, marcacoes),
         vscode.window.onDidChangeVisibleTextEditors(() => marcacoes.redesenhar()),
         marcacoes.onDidChange(() => painel.atualizar()),
@@ -81,6 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
         }),
         vscode.workspace.onDidCloseTextDocument(documento => diagnosticosDicas.delete(documento.uri)),
         vscode.commands.registerCommand('tutorSocratico.verificarCodigo', verificarCodigo),
+        vscode.commands.registerCommand('tutorSocratico.verificarQualidade', verificarQualidadeDoCodigo),
         vscode.commands.registerCommand('tutorSocratico.perguntar', () => abrirChat('@tutor ', true)),
         vscode.commands.registerCommand('tutorSocratico.rodarTestes', rodarTestes),
         vscode.commands.registerCommand('tutorSocratico.pistaSobreTeste', pistaSobreTeste),
@@ -93,7 +113,7 @@ export function activate(context: vscode.ExtensionContext) {
         }),
         exercicios.onDidChange(() => painel.atualizar()),
         vscode.workspace.onDidChangeConfiguration(evento => {
-            if (evento.affectsConfiguration('tutorSocratico.dicasOffline')) {
+            if (evento.affectsConfiguration('tutorSocratico.dicasOffline') || evento.affectsConfiguration('tutorSocratico.dicasDeQualidade')) {
                 vscode.workspace.textDocuments.forEach(analisarDocumento);
             }
             if (evento.affectsConfiguration('editor.inlineSuggest.enabled', { languageId: 'c' })) {
@@ -123,8 +143,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.textDocuments.forEach(analisarDocumento);
     atualizarBarraModo(vscode.window.activeTextEditor);
     perguntarSeEhExercicio(vscode.window.activeTextEditor);
+    avisarPendenciasAoIniciar();
     // Usado pelos testes de integração.
-    return { marcacoes };
+    return { marcacoes, prontidao };
 }
 
 export function deactivate() {}
@@ -142,6 +163,12 @@ async function responder(
     const documento = documentoCAberto();
     const codigo = documento?.getText();
     const problemas = documento ? problemasDoDocumento(documento) : [];
+    if (documento && request.command === 'qualidade') {
+        // Os avisos offline de qualidade (cabeçalho, indentação) ajudam o modelo a não esquecer nada.
+        problemas.push(...(diagnosticosDicas.get(documento.uri) ?? [])
+            .filter(d => d.source === FONTE_QUALIDADE)
+            .map(d => `Linha ${d.range.start.line + 1} (aviso automático de qualidade): ${d.message.replace(/^🎓 /, '')}`));
+    }
     const pergunta = request.prompt.trim();
 
     if (!pergunta && !request.command) {
@@ -189,16 +216,25 @@ async function responder(
         ...historicoDaConversa(chatContext),
     ];
 
-    const instrucao = instrucaoDoComando(request.command);
+    // Conferindo um ponto da verificação de qualidade: segue com a rubrica e a nota.
+    const naQualidade = request.command === 'qualidade'
+        || (request.command === 'proximo' && !!documento && marcacoes.doArquivo(documento.uri)?.tipo === 'qualidade');
+    const instrucao = request.command === 'proximo' && naQualidade
+        ? `${instrucaoDoComando('proximo')}\n${PROXIMO_NA_QUALIDADE}`
+        : instrucaoDoComando(request.command);
     const textoDoAluno = pergunta || '(o aluno não escreveu nada além do comando)';
     mensagens.push(vscode.LanguageModelChatMessage.User(instrucao ? `[${instrucao}]\n\nAluno: ${textoDoAluno}` : `Aluno: ${textoDoAluno}`));
 
     // O /verificar e o /proximo terminam com um bloco escondido que diz quais
     // linhas marcar no editor; ele é tirado do texto mostrado ao aluno.
+    if (acessoAosModelos.canSendRequest(request.model) === false) {
+        explicarPermissao(stream);
+        return { metadata: { comando: request.command, falhou: true } };
+    }
     const filtro = new FiltroDoBloco();
     let bloco: BlocoDePontos | undefined;
     try {
-        const resposta = await request.model.sendRequest(mensagens, {}, token);
+        const resposta = await request.model.sendRequest(mensagens, { justification: JUSTIFICATIVA }, token);
         for await (const trecho of resposta.text) {
             const visivel = filtro.empurrar(trecho);
             if (visivel) {
@@ -211,19 +247,50 @@ async function responder(
         }
         bloco = fim.bloco;
     } catch (erro) {
-        stream.markdown(mensagemDeErro(erro));
+        if (erro instanceof vscode.LanguageModelError && erro.code === vscode.LanguageModelError.NoPermissions().code) {
+            explicarPermissao(stream);
+        } else {
+            stream.markdown(mensagemDeErro(erro));
+            stream.button({ command: 'tutorSocratico.abrirGuia', title: '📘 Abrir o guia de primeiros passos' });
+        }
+        prontidao.conferirComAtraso();
         return { metadata: { comando: request.command, falhou: true } };
     }
-    if (documento && bloco && (request.command === 'verificar' || request.command === 'proximo')) {
-        marcacoes.definir(documento.uri, bloco, request.command === 'proximo');
+    if (documento && bloco && (request.command === 'verificar' || request.command === 'qualidade' || request.command === 'proximo')) {
+        marcacoes.definir(documento.uri, bloco, request.command === 'proximo', naQualidade ? 'qualidade' : 'codigo');
+        const nota = naQualidade && bloco.criterios ? somarNota(bloco.criterios) : undefined;
+        if (nota !== undefined) {
+            const anterior = exercicios.notasDeQualidade(documento.uri).at(-1);
+            stream.markdown('\n\n---\n' + cartaoDaNota(bloco.criterios!, anterior));
+            await exercicios.salvarNotaDeQualidade(documento.uri, nota);
+        }
         const atual = marcacoes.atual(documento.uri);
         if (atual) {
-            stream.markdown(`\n\n---\n📍 Marquei a **linha ${atual.ponto.linha}** no editor (ponto ${atual.numero} de ${atual.total}). Quando achar que corrigiu, clique em **✅ Já corrigi** em cima da linha.`);
-            stream.button({ command: 'tutorSocratico.irParaPonto', title: '📍 Ir para a linha', arguments: [documento.uri] });
-            stream.button({ command: 'tutorSocratico.proximoPonto', title: '✅ Já corrigi, conferir', arguments: [documento.uri] });
+            if (atual.tipo === 'qualidade') {
+                stream.markdown(`\n\n---\n📍 Marquei a **linha ${atual.ponto.linha}** no editor (ponto de qualidade ${atual.numero} de ${atual.total}). Faça um ponto e clique em **✅ Feito, próximo** para ir ao seguinte. Depois do último, eu confiro tudo de uma vez e dou a nota nova.`);
+                stream.button({ command: 'tutorSocratico.irParaPonto', title: '📍 Ir para a linha', arguments: [documento.uri] });
+                stream.button({ command: 'tutorSocratico.proximoPonto', title: '✅ Feito, próximo', arguments: [documento.uri] });
+            } else {
+                stream.markdown(`\n\n---\n📍 Marquei a **linha ${atual.ponto.linha}** no editor (ponto ${atual.numero} de ${atual.total}). Quando achar que corrigiu, clique em **✅ Já corrigi** em cima da linha.`);
+                stream.button({ command: 'tutorSocratico.irParaPonto', title: '📍 Ir para a linha', arguments: [documento.uri] });
+                stream.button({ command: 'tutorSocratico.proximoPonto', title: '✅ Já corrigi, conferir', arguments: [documento.uri] });
+            }
         }
     }
     return { metadata: { comando: request.command } };
+}
+
+/** A permissão para usar a IA foi recusada: explica e mostra o botão que libera. */
+function explicarPermissao(stream: vscode.ChatResponseStream) {
+    stream.markdown([
+        '🔒 **O tutor ainda não tem permissão para usar a IA.**',
+        '',
+        'Quando o VS Code perguntou se o *Muri-Muri Socratico* podia usar os modelos de linguagem, a resposta foi "Não permitir". Sem essa permissão, eu não consigo responder.',
+        '',
+        'Clique no botão abaixo, **marque "Muri-Muri Socratico"** na lista e confirme com **OK**. Depois, é só perguntar de novo.',
+    ].join('\n'));
+    stream.button({ command: 'tutorSocratico.liberarIa', title: '🔓 Liberar a IA para o tutor' });
+    stream.button({ command: 'tutorSocratico.abrirGuia', title: '📘 Ver o passo a passo' });
 }
 
 /** Converte as trocas anteriores com o @tutor em mensagens para o modelo. */
@@ -261,10 +328,10 @@ function sugerirProximosPassos(resultado: vscode.ChatResult): vscode.ChatFollowu
 function mensagemDeErro(erro: unknown): string {
     if (erro instanceof vscode.LanguageModelError) {
         if (erro.code === vscode.LanguageModelError.NoPermissions().code) {
-            return '⚠️ O Tutor precisa da sua permissão para usar o modelo de IA do Copilot. Tente de novo e aceite o pedido de permissão.';
+            return '⚠️ O tutor precisa da sua permissão para usar a IA do Copilot.';
         }
         if (erro.code === vscode.LanguageModelError.NotFound().code) {
-            return '⚠️ Nenhum modelo de IA disponível. Verifique se o **GitHub Copilot** está instalado e se você entrou na sua conta do GitHub.';
+            return '⚠️ O modelo de IA escolhido não está disponível. No chat, clique no nome do modelo (embaixo da caixa de mensagem) e escolha outro, como **Auto**. Se não aparecer nenhum, entre na sua conta do GitHub para ativar o Copilot.';
         }
         if (erro.code === vscode.LanguageModelError.Blocked().code) {
             return '⚠️ O limite de uso do Copilot foi atingido por enquanto. Tente novamente mais tarde.';
@@ -312,6 +379,17 @@ class AcoesDoTutor implements vscode.CodeActionProvider {
         contexto: vscode.CodeActionContext,
     ): vscode.CodeAction[] {
         const acoes: vscode.CodeAction[] = [];
+        // Aviso de cabeçalho/enunciado na linha 1: oferece inserir o que falta.
+        if (contexto.diagnostics.some(d => d.source === FONTE_QUALIDADE && d.range.start.line === 0 && !d.message.includes('Indentação'))) {
+            const codigo = documento.getText();
+            const titulo = temCabecalhoDoxygen(codigo) ? '📝 Inserir o enunciado abaixo do cabeçalho' : '📝 Inserir cabeçalho Doxygen (e o enunciado)';
+            if (!temCabecalhoDoxygen(codigo) || !temEnunciadoNoComentario(codigo)) {
+                const inserir = new vscode.CodeAction(titulo, vscode.CodeActionKind.QuickFix);
+                inserir.command = { command: 'tutorSocratico.inserirCabecalho', title: titulo, arguments: [documento.uri] };
+                inserir.isPreferred = true;
+                acoes.push(inserir);
+            }
+        }
         for (const d of contexto.diagnostics.filter(d => d.severity <= vscode.DiagnosticSeverity.Information).slice(0, 3)) {
             const acao = new vscode.CodeAction('💡 Pedir uma pista ao Tutor Socrático', vscode.CodeActionKind.QuickFix);
             acao.diagnostics = [d];
@@ -351,7 +429,14 @@ function analisarDocumento(documento: vscode.TextDocument) {
         diagnosticosDicas.delete(documento.uri);
         return;
     }
-    diagnosticosDicas.set(documento.uri, analisarCodigo(documento.getText()).map(dica => {
+    const codigo = documento.getText();
+    const dicas = analisarCodigo(codigo).map(dica => ({ ...dica, fonte: 'Tutor Socrático' }));
+    if (vscode.workspace.getConfiguration('tutorSocratico').get<boolean>('dicasDeQualidade', true)) {
+        // Cabeçalho Doxygen (Aula 16) e indentação (Aula 06), pedidos na disciplina.
+        dicas.push(...verificarQualidade(codigo, limparCodigo(codigo))
+            .map(p => ({ ...p, aula: p.regra === 'indentacao' ? 6 : 16, fonte: FONTE_QUALIDADE })));
+    }
+    diagnosticosDicas.set(documento.uri, dicas.map(dica => {
         const linha = Math.min(dica.linha - 1, documento.lineCount - 1);
         const inicio = Math.max(0, dica.coluna - 1);
         const diagnostico = new vscode.Diagnostic(
@@ -359,11 +444,13 @@ function analisarDocumento(documento: vscode.TextDocument) {
             '🎓 ' + dica.mensagem,
             vscode.DiagnosticSeverity.Information,
         );
-        diagnostico.source = 'Tutor Socrático';
+        diagnostico.source = dica.fonte;
         diagnostico.code = codigoDaAula(dica.aula);
         return diagnostico;
     }));
 }
+
+const FONTE_QUALIDADE = 'Tutor Socrático · qualidade';
 
 const atrasos = new Map<string, NodeJS.Timeout>();
 
@@ -471,6 +558,25 @@ async function informarExercicio(texto?: string) {
 }
 
 /** Botão ao lado do "Executar": salva, verifica com o GCC e pede a revisão ao tutor. */
+/** Verificação só da qualidade (nomes, comentários, Doxygen, indentação), com nota de 0 a 1000. */
+async function verificarQualidadeDoCodigo(uri?: vscode.Uri) {
+    const documento = uri instanceof vscode.Uri
+        ? vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString())
+        : documentoCAberto();
+    if (!documento || documento.languageId !== 'c') {
+        vscode.window.showInformationMessage('Abra um arquivo .c para o tutor avaliar a qualidade.');
+        return;
+    }
+    if (documento.isDirty) {
+        await documento.save();
+    }
+    analisarDocumento(documento);
+    const feitos = marcacoes.doArquivo(documento.uri)?.feitos.length ?? 0;
+    await abrirChat(feitos > 0
+        ? `@tutor /qualidade Fiz ${feitos === 1 ? 'o ponto' : `os ${feitos} pontos`} de qualidade. Confira se ficou certo e me dê a nota nova.`
+        : '@tutor /qualidade Avalie a qualidade do meu código e me diga o que melhorar.', false);
+}
+
 async function verificarCodigo(uri?: vscode.Uri) {
     const documento = uri instanceof vscode.Uri
         ? vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString())
@@ -517,6 +623,11 @@ async function rodarTestes(uri?: vscode.Uri): Promise<ResultadoDosTestes | undef
         vscode.window.showInformationMessage('Abra um arquivo .c para rodar os testes.');
         return undefined;
     }
+    if (!vscode.workspace.isTrusted) {
+        painel.mostrarTestes(documento.uri, { erro: '🔒 Esta pasta está em modo restrito, então o tutor não compila nem executa programas. Clique em "Confiar nesta pasta" no aviso do topo do painel.' });
+        avisarModoRestrito();
+        return undefined;
+    }
     const casos = exercicios.casos(documento.uri);
     if (casos.length === 0) {
         painel.mostrarTestes(documento.uri, { erro: 'Adicione pelo menos um caso de teste.' });
@@ -540,6 +651,96 @@ async function rodarTestes(uri?: vscode.Uri): Promise<ResultadoDosTestes | undef
 }
 
 // ---------------------------------------------------------------------------
+// Computadores da universidade: pendências, modo restrito e guia
+// ---------------------------------------------------------------------------
+
+async function avisarModoRestrito() {
+    const escolha = await vscode.window.showWarningMessage(
+        '🔒 Esta pasta está em modo restrito: o tutor conversa, mas não compila nem testa o programa. Se a pasta é dos seus exercícios, confie nela.',
+        'Confiar nesta pasta');
+    if (escolha) {
+        await vscode.commands.executeCommand('workbench.trust.manage');
+    }
+}
+
+/** Ao abrir o VS Code, avisa (uma vez) se algo impede o tutor de usar a IA. */
+function avisarPendenciasAoIniciar() {
+    // Espera o Copilot carregar os modelos antes de concluir que falta algo.
+    setTimeout(async () => {
+        await prontidao.conferir();
+        const bloqueio = prontidao.bloqueioDaIa();
+        if (!bloqueio) {
+            return;
+        }
+        const escolha = await vscode.window.showWarningMessage(
+            `🎓 O tutor ainda não consegue usar a IA: ${bloqueio.titulo.toLowerCase()}.`,
+            bloqueio.botao ?? 'Resolver', 'Abrir o guia');
+        if (escolha === 'Abrir o guia') {
+            await prontidao.abrirGuia();
+        } else if (escolha) {
+            await prontidao.resolver(bloqueio.id);
+        }
+    }, 8000);
+}
+
+// ---------------------------------------------------------------------------
+// Cabeçalho Doxygen e enunciado no comentário (qualidade do código)
+// ---------------------------------------------------------------------------
+
+/**
+ * Coloca no início do arquivo o que falta: o cabeçalho Doxygen e, logo
+ * abaixo, o enunciado (o do painel, se houver). Depois seleciona o \brief.
+ */
+async function inserirCabecalho(uri?: vscode.Uri, autorInformado?: string) {
+    const alvo = uri instanceof vscode.Uri ? uri : documentoCAberto()?.uri;
+    if (!alvo) {
+        vscode.window.showInformationMessage('Abra um arquivo .c para inserir o cabeçalho.');
+        return;
+    }
+    const editor = await vscode.window.showTextDocument(alvo);
+    const documento = editor.document;
+    const codigo = documento.getText();
+    const temCabecalho = temCabecalhoDoxygen(codigo);
+    const temEnunciado = temEnunciadoNoComentario(codigo);
+    if (temCabecalho && temEnunciado) {
+        vscode.window.showInformationMessage('Este arquivo já tem o cabeçalho Doxygen e o enunciado.');
+        return;
+    }
+    let texto = '';
+    let onde = new vscode.Position(0, 0);
+    if (!temCabecalho) {
+        let autor = autorInformado ?? contextoGlobal.globalState.get<string>('autor');
+        if (autor === undefined) {
+            autor = await vscode.window.showInputBox({ title: 'Cabeçalho Doxygen', prompt: 'Seu nome, para o campo \\author', placeHolder: 'Ex.: Maria Silva' });
+            if (autor === undefined) {
+                return;
+            }
+            await contextoGlobal.globalState.update('autor', autor);
+        }
+        texto = montarCabecalho({ arquivo: path.basename(documento.fileName), autor, data: new Date() }) + '\n';
+    } else {
+        // Já tem cabeçalho: o enunciado entra logo abaixo dele.
+        const cabecalho = comentariosDoInicio(codigo).find(c => c.doxygen)!;
+        onde = documento.positionAt(cabecalho.fim);
+        texto = '\n\n';
+    }
+    if (!temEnunciado) {
+        texto += montarComentarioDoEnunciado(exercicios.enunciado(alvo)) + '\n';
+    }
+    const fimDeLinha = documento.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+    if (temCabecalho) {
+        texto = texto.replace(/\n$/, '');
+    }
+    await editor.edit(e => e.insert(onde, texto.replace(/\n/g, fimDeLinha)));
+    const brief = editor.document.getText().indexOf(BRIEF_A_PREENCHER);
+    if (brief >= 0) {
+        const inicio = editor.document.positionAt(brief);
+        editor.selection = new vscode.Selection(inicio, inicio.translate(0, BRIEF_A_PREENCHER.length));
+        editor.revealRange(editor.selection);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Pontos marcados no editor (um por vez, do mais fácil ao mais difícil)
 // ---------------------------------------------------------------------------
 
@@ -553,6 +754,21 @@ async function proximoPonto(uri?: vscode.Uri) {
     const atual = alvo && marcacoes.atual(alvo);
     if (!alvo || !atual) {
         vscode.window.showInformationMessage('Nenhum ponto marcado. Clique em "Verificar meu código" para o tutor revisar.');
+        return;
+    }
+    if (atual.tipo === 'qualidade') {
+        // Qualidade: passa para o próximo sem gastar a IA; o tutor confere tudo no fim.
+        const faltam = marcacoes.marcarFeito(alvo);
+        if (faltam > 0) {
+            await marcacoes.irPara(alvo);
+            return;
+        }
+        const escolha = await vscode.window.showInformationMessage(
+            `✅ Você fez os ${atual.total} pontos de qualidade! Quer que o tutor confira tudo e dê a nota nova?`,
+            'Conferir e ver a nota');
+        if (escolha) {
+            await verificarQualidadeDoCodigo(alvo);
+        }
         return;
     }
     const documento = vscode.workspace.textDocuments.find(d => d.uri.toString() === alvo.toString());
@@ -596,12 +812,20 @@ function infoDoExercicio(uri: vscode.Uri): InfoDoPainel {
         casosDoProfessor: exercicios.casosDoProfessor(uri),
         ajudas: exercicios.ajudas(uri),
         ponto: pontoDoPainel(uri),
+        nota: notaDoPainel(uri),
+        qualidadeParaConferir: marcacoes.esperandoConferencia(uri)?.length,
+        semCabecalho: documento ? !temCabecalhoDoxygen(documento.getText()) || !temEnunciadoNoComentario(documento.getText()) : false,
     };
 }
 
 function pontoDoPainel(uri: vscode.Uri): InfoDoPainel['ponto'] {
     const atual = marcacoes.atual(uri);
-    return atual && { numero: atual.numero, total: atual.total, linha: atual.ponto.linha, pergunta: atual.ponto.pergunta };
+    return atual && { numero: atual.numero, total: atual.total, linha: atual.ponto.linha, pergunta: atual.ponto.pergunta, tipo: atual.tipo };
+}
+
+function notaDoPainel(uri: vscode.Uri): InfoDoPainel['nota'] {
+    const notas = exercicios.notasDeQualidade(uri);
+    return notas.length > 0 ? { atual: notas[notas.length - 1], anterior: notas.length > 1 ? notas[notas.length - 2] : undefined } : undefined;
 }
 
 async function quizDaAula() {
@@ -674,6 +898,13 @@ let avisouGccAusente = false;
 
 async function verificarDocumento(documento: vscode.TextDocument, manual: boolean) {
     if (documento.uri.scheme !== 'file') {
+        return;
+    }
+    if (!vscode.workspace.isTrusted) {
+        // Modo restrito: o VS Code pede para não executar programas da pasta.
+        if (manual) {
+            avisarModoRestrito();
+        }
         return;
     }
     const caminhoGcc = vscode.workspace.getConfiguration('tutorSocratico').get<string>('caminhoGcc', 'gcc');

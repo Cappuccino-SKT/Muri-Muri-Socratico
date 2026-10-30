@@ -2,6 +2,7 @@
 // enunciado colado entre os exercícios das aulas e lê o comentário do início
 // do arquivo quando não há enunciado. Não depende da API do VS Code.
 import { ExercicioDoCatalogo } from './catalogo';
+import { textoDoEnunciadoNoComentario } from './cabecalho';
 
 // Palavras que aparecem em quase todo enunciado e não ajudam a diferenciar.
 const PALAVRAS_COMUNS = new Set([
@@ -55,29 +56,14 @@ export function reconhecerExercicio(texto: string | undefined, exercicios: Exerc
 }
 
 /**
- * Comentário no começo do arquivo (antes do primeiro código), que muitos
- * alunos usam para colar o enunciado. Ignora comentários curtos, como o nome.
+ * Comentário no começo do arquivo (antes do primeiro código), onde fica o
+ * enunciado: logo abaixo do cabeçalho Doxygen, que é ignorado, assim como
+ * comentários curtos (só o nome, por exemplo).
  */
 export function comentarioInicial(codigo: string | undefined): string | undefined {
     if (!codigo) {
         return undefined;
     }
-    const linhas: string[] = [];
-    let resto = codigo.replace(/^\uFEFF/, '');
-    for (;;) {
-        resto = resto.replace(/^\s+/, '');
-        const bloco = resto.match(/^\/\*([\s\S]*?)\*\//);
-        const linha = resto.match(/^\/\/(.*)/);
-        if (bloco) {
-            linhas.push(...bloco[1].split(/\r?\n/).map(l => l.replace(/^\s*\*+ ?/, '').trimEnd()));
-            resto = resto.slice(bloco[0].length);
-        } else if (linha) {
-            linhas.push(linha[1].trim());
-            resto = resto.slice(linha[0].length);
-        } else {
-            break;
-        }
-    }
-    const texto = linhas.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    const texto = textoDoEnunciadoNoComentario(codigo);
     return palavras(texto).size >= 5 ? texto : undefined;
 }

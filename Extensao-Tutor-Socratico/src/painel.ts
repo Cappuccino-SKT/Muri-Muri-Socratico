@@ -4,6 +4,7 @@
 import * as vscode from 'vscode';
 import { Exercicios } from './exercicios';
 import { CasoDeTeste, ResultadoDosTestes } from './testes';
+import { ItemDeProntidao } from './prontidao';
 
 export const ID_PAINEL = 'tutorSocratico.exercicio';
 
@@ -14,14 +15,22 @@ type MensagemDoPainel =
     | { tipo: 'rodarTestes' }
     | { tipo: 'pistaTeste'; indice: number }
     | { tipo: 'verificar' }
+    | { tipo: 'verificarQualidade' }
     | { tipo: 'modoAprendizado' }
-    | { tipo: 'comando'; comando: string };
+    | { tipo: 'comando'; comando: string; argumento?: string };
 
 // Botões do painel que só disparam um comando da extensão.
 const COMANDOS_DO_PAINEL = new Set([
     'tutorSocratico.perguntar', 'tutorSocratico.pedirPista', 'tutorSocratico.depurar',
     'tutorSocratico.explicarCodigo', 'tutorSocratico.quiz',
     'tutorSocratico.irParaPonto', 'tutorSocratico.proximoPonto', 'tutorSocratico.pistaDoPonto',
+    'tutorSocratico.inserirCabecalho', 'tutorSocratico.abrirGuia', 'tutorSocratico.conferirProntidao',
+    'tutorSocratico.resolverPendencia', 'tutorSocratico.verificarQualidade',
+]);
+// Botões que valem para o arquivo mostrado no painel.
+const COMANDOS_DO_ARQUIVO = new Set([
+    'tutorSocratico.irParaPonto', 'tutorSocratico.proximoPonto', 'tutorSocratico.pistaDoPonto', 'tutorSocratico.inserirCabecalho',
+    'tutorSocratico.verificarQualidade',
 ]);
 
 export interface InfoDoPainel {
@@ -32,7 +41,13 @@ export interface InfoDoPainel {
     casosDoProfessor: boolean;
     ajudas: number;
     // Ponto que o tutor marcou no editor e o aluno está resolvendo agora.
-    ponto?: { numero: number; total: number; linha: number; pergunta: string };
+    ponto?: { numero: number; total: number; linha: number; pergunta: string; tipo: 'codigo' | 'qualidade' };
+    // Nota de qualidade (0 a 1000) da última verificação e da anterior.
+    nota?: { atual: number; anterior?: number };
+    // Qualidade: quantos pontos o aluno marcou como feitos, esperando a conferência do tutor.
+    qualidadeParaConferir?: number;
+    // Falta o cabeçalho Doxygen ou o enunciado em comentário no arquivo.
+    semCabecalho: boolean;
 }
 
 export class PainelExercicio implements vscode.WebviewViewProvider {
@@ -40,6 +55,7 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
     private arquivoAtual?: vscode.Uri;
     private focarAoAbrir = false;
     private atraso?: NodeJS.Timeout;
+    private prontidao: ItemDeProntidao[] = [];
 
     constructor(
         private readonly exercicios: Exercicios,
@@ -91,6 +107,12 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
         this.atraso = setTimeout(() => this.atualizar(), 800);
     }
 
+    /** Lista do "Tudo pronto?" e o aviso do topo, quando algo impede o tutor de funcionar. */
+    mostrarProntidao(itens: ItemDeProntidao[]) {
+        this.prontidao = itens;
+        this.visao?.webview.postMessage({ tipo: 'prontidao', itens });
+    }
+
     /** Mostra que os testes estão rodando ou os resultados deles. */
     mostrarTestes(uri: vscode.Uri, resultados: ResultadoDosTestes | 'rodando' | { erro: string }) {
         if (this.arquivoAtual?.toString() === uri.toString()) {
@@ -115,6 +137,7 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
         switch (mensagem.tipo) {
             case 'pronto':
                 this.atualizar();
+                this.mostrarProntidao(this.prontidao);
                 if (this.focarAoAbrir) {
                     this.focarAoAbrir = false;
                     this.visao?.webview.postMessage({ tipo: 'focar' });
@@ -139,14 +162,16 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
             case 'verificar':
                 await vscode.commands.executeCommand('tutorSocratico.verificarCodigo', uri);
                 return;
+            case 'verificarQualidade':
+                await vscode.commands.executeCommand('tutorSocratico.verificarQualidade', uri);
+                return;
             case 'modoAprendizado':
                 await vscode.commands.executeCommand('tutorSocratico.alternarModoAprendizado');
                 return;
             case 'comando':
                 if (COMANDOS_DO_PAINEL.has(mensagem.comando)) {
-                    // Os botões do ponto marcado valem para o arquivo mostrado no painel.
-                    const doPonto = mensagem.comando.endsWith('Ponto');
-                    await vscode.commands.executeCommand(mensagem.comando, ...(doPonto && uri ? [uri] : []));
+                    const argumentos = COMANDOS_DO_ARQUIVO.has(mensagem.comando) ? (uri ? [uri] : []) : mensagem.argumento ? [mensagem.argumento] : [];
+                    await vscode.commands.executeCommand(mensagem.comando, ...argumentos);
                 }
                 return;
         }
@@ -181,12 +206,25 @@ function htmlDoPainel(nonce: string): string {
   button.secundario { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
   button.secundario:hover { background: var(--vscode-button-secondaryHoverBackground); }
   #verificar { margin-top: 10px; padding: 9px 6px; font-weight: 600; }
+  #verificarQualidade { padding: 7px 6px; }
+  .nota { display: flex; align-items: baseline; gap: 6px; font-size: 12px; margin-top: 4px; color: var(--vscode-descriptionForeground); }
+  .nota b { font-size: 14px; color: var(--vscode-foreground); }
+  .nota .subiu { color: var(--vscode-testing-iconPassed, #3fb950); }
+  .nota .desceu { color: var(--vscode-testing-iconFailed, #f85149); }
   .link { background: none; color: var(--vscode-textLink-foreground); padding: 2px 0; text-align: left; width: auto; margin-top: 2px; }
   .link:hover { background: none; text-decoration: underline; }
   .status { min-height: 1.2em; color: var(--vscode-descriptionForeground); font-size: 12px; margin-top: 2px; }
   .origem { font-size: 12px; margin: 4px 0 0; padding: 4px 6px; border-left: 3px solid var(--vscode-textLink-foreground); background: var(--vscode-textCodeBlock-background); }
   .origem:empty { display: none; }
   .oculto { display: none; }
+  .alerta { margin: 8px 0 4px; padding: 8px; border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100); background: var(--vscode-inputValidation-errorBackground, #5a1d1d55); }
+  .alerta.aviso { border-color: var(--vscode-inputValidation-warningBorder, #b89500); background: var(--vscode-inputValidation-warningBackground, #4d3c0055); }
+  .alerta-titulo { font-weight: 600; }
+  .alerta .link { margin-top: 4px; }
+  .item { display: flex; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--vscode-panel-border, #8882); }
+  .item-icone { width: 18px; flex: none; }
+  .item-texto { flex: 1; }
+  .item-texto button { margin-top: 4px; width: auto; padding: 4px 10px; }
   .ponto { margin-top: 10px; padding: 8px; border-left: 3px solid #f0b400; background: var(--vscode-textCodeBlock-background); }
   .ponto-titulo { font-weight: 600; }
   .ponto-pergunta { margin: 4px 0 2px; }
@@ -226,6 +264,13 @@ function htmlDoPainel(nonce: string): string {
 </style>
 </head>
 <body>
+  <div class="alerta oculto" id="alerta">
+    <div class="alerta-titulo" id="alertaTitulo"></div>
+    <div class="dica" id="alertaDetalhe"></div>
+    <button id="alertaBotao"></button>
+    <button class="link" data-comando="tutorSocratico.abrirGuia">📘 Ver o passo a passo</button>
+  </div>
+
   <div id="semArquivo">
     <p class="dica">Abra ou crie um arquivo <b>.c</b> para usar o tutor.</p>
   </div>
@@ -237,18 +282,29 @@ function htmlDoPainel(nonce: string): string {
     <textarea id="enunciado" placeholder="Cole aqui o enunciado do exercício (opcional)."></textarea>
     <div class="status" id="status"></div>
     <div class="origem" id="origem"></div>
+    <button class="link oculto" id="cabecalho" data-comando="tutorSocratico.inserirCabecalho">📝 Colocar o cabeçalho Doxygen e o enunciado no arquivo</button>
 
     <button id="verificar">🎓 Verificar meu código</button>
     <p class="dica">O tutor aponta onde olhar e faz perguntas, sem entregar a resposta.</p>
+    <button class="secundario" id="verificarQualidade">✨ Verificar a qualidade do código</button>
+    <div class="nota oculto" id="nota"></div>
+    <p class="dica">Nomes, comentários, Doxygen e indentação, com nota de 0 a 1000.</p>
 
     <div class="ponto oculto" id="ponto">
       <div class="ponto-titulo" id="pontoTitulo"></div>
       <div class="ponto-pergunta" id="pontoPergunta"></div>
       <div class="linha-botoes">
         <button class="secundario" data-comando="tutorSocratico.irParaPonto">📍 Ir para a linha</button>
-        <button data-comando="tutorSocratico.proximoPonto">✅ Já corrigi</button>
+        <button data-comando="tutorSocratico.proximoPonto" id="pontoFeito">✅ Já corrigi</button>
       </div>
-      <button class="link" data-comando="tutorSocratico.pistaDoPonto">💡 Pedir uma pista sobre este ponto</button>
+      <button class="link" data-comando="tutorSocratico.pistaDoPonto" id="pontoPista">💡 Pedir uma pista sobre este ponto</button>
+      <button class="link oculto" data-comando="tutorSocratico.verificarQualidade" id="pontoConferirTudo">✨ Já fiz tudo: conferir agora</button>
+    </div>
+
+    <div class="ponto oculto" id="conferir">
+      <div class="ponto-titulo" id="conferirTitulo"></div>
+      <div class="ponto-pergunta">O tutor confere todos de uma vez e dá a nota nova.</div>
+      <button data-comando="tutorSocratico.verificarQualidade">✨ Conferir e ver a nota nova</button>
     </div>
 
     <details id="secTestes">
@@ -278,6 +334,18 @@ function htmlDoPainel(nonce: string): string {
     </details>
   </div>
 
+  <details id="secPronto">
+    <summary>🩺 Tudo pronto? <span class="selo" id="seloPronto"></span></summary>
+    <div class="conteudo">
+      <p class="dica">O que o tutor precisa para funcionar neste computador.</p>
+      <div id="itensProntos"></div>
+      <div class="linha-botoes">
+        <button class="secundario" data-comando="tutorSocratico.conferirProntidao">🔄 Conferir de novo</button>
+        <button class="secundario" data-comando="tutorSocratico.abrirGuia">📘 Guia passo a passo</button>
+      </div>
+    </div>
+  </details>
+
   <details id="secOpcoes">
     <summary>⚙️ Opções</summary>
     <div class="conteudo">
@@ -296,7 +364,7 @@ function htmlDoPainel(nonce: string): string {
   let resultados;
 
   // Lembra quais seções o aluno deixou abertas.
-  const SECOES = ['secTestes', 'secAjuda', 'secOpcoes'];
+  const SECOES = ['secTestes', 'secAjuda', 'secPronto', 'secOpcoes'];
   const salvo = vscode.getState() || {};
   SECOES.forEach(id => {
     $(id).open = (salvo.abertas || []).includes(id);
@@ -346,10 +414,67 @@ function htmlDoPainel(nonce: string): string {
     $('dicaProfessor').textContent = info.casosDoProfessor ? '👩‍🏫 Os casos abaixo são do professor para este exercício.' : '🔮 Antes de rodar, tente prever o que o programa vai mostrar: é o "teste de mesa".';
     $('ajudas').textContent = info.ajudas ? 'Ajudas pedidas neste arquivo: ' + info.ajudas + '. Tente sozinho um pouco antes da próxima.' : '';
     $('seloAjuda').textContent = info.ajudas ? info.ajudas + (info.ajudas === 1 ? ' ajuda' : ' ajudas') : '';
+    $('cabecalho').classList.toggle('oculto', !info.semCabecalho);
+    desenharNota(info.nota);
     $('ponto').classList.toggle('oculto', !info.ponto);
     if (info.ponto) {
-      $('pontoTitulo').textContent = '📍 Ponto ' + info.ponto.numero + ' de ' + info.ponto.total + ' · linha ' + info.ponto.linha;
+      const daQualidade = info.ponto.tipo === 'qualidade';
+      $('pontoTitulo').textContent = (daQualidade ? '✨ Qualidade ' : '📍 Ponto ') + info.ponto.numero + ' de ' + info.ponto.total + ' · linha ' + info.ponto.linha;
       $('pontoPergunta').textContent = info.ponto.pergunta;
+      // Na qualidade, "feito" só avança: o tutor confere tudo no fim.
+      $('pontoFeito').textContent = daQualidade ? '✅ Feito, próximo' : '✅ Já corrigi';
+      $('pontoPista').textContent = daQualidade ? '💡 Como fazer?' : '💡 Pedir uma pista sobre este ponto';
+      $('pontoConferirTudo').classList.toggle('oculto', !daQualidade);
+    }
+    const paraConferir = info.qualidadeParaConferir || 0;
+    $('conferir').classList.toggle('oculto', !paraConferir);
+    $('conferirTitulo').textContent = paraConferir === 1 ? '✅ Você fez o ponto de qualidade' : '✅ Você fez os ' + paraConferir + ' pontos de qualidade';
+  }
+
+  const ICONES = { ok: '✅', aviso: '⚠️', erro: '❌', conferindo: '⏳' };
+  const resolver = id => vscode.postMessage({ tipo: 'comando', comando: 'tutorSocratico.resolverPendencia', argumento: id });
+
+  /** Lista do "Tudo pronto?" e, no topo, a pendência mais importante. */
+  function desenharProntidao(itens) {
+    const lista = $('itensProntos');
+    lista.textContent = '';
+    itens.forEach(item => {
+      const texto = elemento('div', { className: 'item-texto' }, [elemento('div', { textContent: item.titulo })]);
+      if (item.detalhe) texto.append(elemento('div', { className: 'dica', textContent: item.detalhe }));
+      if (item.botao && item.situacao !== 'ok') {
+        const botao = elemento('button', { className: item.situacao === 'erro' ? '' : 'secundario', textContent: item.botao });
+        botao.addEventListener('click', () => resolver(item.id));
+        texto.append(botao);
+      }
+      lista.append(elemento('div', { className: 'item' }, [elemento('span', { className: 'item-icone', textContent: ICONES[item.situacao] }), texto]));
+    });
+    const pendencias = itens.filter(i => i.situacao === 'erro').length;
+    $('seloPronto').textContent = !itens.length ? '' : pendencias ? '❌ ' + pendencias + (pendencias === 1 ? ' pendência' : ' pendências') : '✅ tudo certo';
+
+    // No topo: o que impede a IA primeiro; depois, a pasta em modo restrito.
+    const ordem = ['ia', 'conta', 'permissao', 'pasta'];
+    const principal = ordem.map(id => itens.find(i => i.id === id && i.situacao === 'erro')).find(Boolean);
+    $('alerta').classList.toggle('oculto', !principal);
+    if (principal) {
+      const daIa = principal.id !== 'pasta';
+      $('alerta').classList.toggle('aviso', !daIa);
+      $('alertaTitulo').textContent = daIa ? '⚠️ O tutor ainda não consegue usar a IA' : '🔒 Pasta em modo restrito';
+      $('alertaDetalhe').textContent = principal.titulo + '. ' + (principal.detalhe || '');
+      $('alertaBotao').textContent = principal.botao || 'Resolver';
+      $('alertaBotao').onclick = () => resolver(principal.id);
+    }
+  }
+
+  /** "🏅 780 / 1000 (+130)" abaixo do botão da qualidade. */
+  function desenharNota(nota) {
+    const alvo = $('nota');
+    alvo.textContent = '';
+    alvo.classList.toggle('oculto', !nota);
+    if (!nota) return;
+    alvo.append('🏅 Última nota: ', elemento('b', { textContent: nota.atual + ' / 1000' }));
+    if (nota.anterior !== undefined && nota.anterior !== nota.atual) {
+      const diferenca = nota.atual - nota.anterior;
+      alvo.append(elemento('span', { className: diferenca > 0 ? 'subiu' : 'desceu', textContent: (diferenca > 0 ? '⬆ +' : '⬇ ') + diferenca }));
     }
   }
 
@@ -459,6 +584,7 @@ function htmlDoPainel(nonce: string): string {
     vscode.postMessage({ tipo: 'rodarTestes' });
   });
   $('verificar').addEventListener('click', () => { if (temporizador) salvar(); vscode.postMessage({ tipo: 'verificar' }); });
+  $('verificarQualidade').addEventListener('click', () => { if (temporizador) salvar(); vscode.postMessage({ tipo: 'verificarQualidade' }); });
   $('modo').addEventListener('click', () => vscode.postMessage({ tipo: 'modoAprendizado' }));
   document.querySelectorAll('[data-comando]').forEach(botao =>
     botao.addEventListener('click', () => vscode.postMessage({ tipo: 'comando', comando: botao.dataset.comando })));
@@ -466,6 +592,7 @@ function htmlDoPainel(nonce: string): string {
   window.addEventListener('message', evento => {
     const msg = evento.data;
     if (msg.tipo === 'focar') { $('enunciado').focus(); return; }
+    if (msg.tipo === 'prontidao') { desenharProntidao(msg.itens); return; }
     if (msg.tipo === 'resultados') {
       $('secTestes').open = true;
       if (msg.resultados === 'rodando' || msg.resultados.erro) { desenharResumo(msg.resultados); return; }

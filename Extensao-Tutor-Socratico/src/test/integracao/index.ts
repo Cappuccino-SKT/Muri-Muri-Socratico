@@ -37,7 +37,9 @@ export async function run(): Promise<void> {
     for (const id of ['tutorSocratico.verificarCodigo', 'tutorSocratico.perguntar', 'tutorSocratico.informarExercicio',
         'tutorSocratico.alternarModoAprendizado', 'tutorSocratico.pedirPista', 'tutorSocratico.verificarArquivo',
         'tutorSocratico.rodarTestes', 'tutorSocratico.pistaSobreTeste', 'tutorSocratico.explicarCodigo',
-        'tutorSocratico.quiz', 'tutorSocratico.depurar']) {
+        'tutorSocratico.quiz', 'tutorSocratico.depurar', 'tutorSocratico.liberarIa', 'tutorSocratico.abrirGuia',
+        'tutorSocratico.conferirProntidao', 'tutorSocratico.resolverPendencia', 'tutorSocratico.inserirCabecalho',
+        'tutorSocratico.verificarQualidade']) {
         assert.ok(comandos.includes(id), `comando ausente: ${id}`);
     }
     ok('todos os comandos registrados');
@@ -91,6 +93,33 @@ export async function run(): Promise<void> {
     assert.ok(acoesDica.some(a => a.title.startsWith('📺 Assistir à videoaula')), acoesDica.map(a => a.title).join(' | '));
     ok('lâmpada oferece "Assistir à videoaula" nas dicas');
 
+    const qualidade = await aguardar(() => {
+        const lista = vscode.languages.getDiagnostics(documento.uri).filter(d => d.source === 'Tutor Socrático · qualidade');
+        return lista.length > 0 ? lista : undefined;
+    });
+    assert.ok(qualidade.some(d => d.range.start.line === 0 && d.message.includes('cabeçalho Doxygen')), qualidade.map(d => d.message).join(' | '));
+    const acoesCabecalho = await vscode.commands.executeCommand<vscode.CodeAction[]>(
+        'vscode.executeCodeActionProvider', documento.uri, new vscode.Range(0, 0, 0, 1));
+    assert.ok(acoesCabecalho.some(a => a.title.startsWith('📝 Inserir cabeçalho Doxygen')), acoesCabecalho.map(a => a.title).join(' | '));
+    ok('aviso de cabeçalho Doxygen na linha 1, com a lâmpada "Inserir cabeçalho"');
+
+    // Computadores da universidade: modo restrito, guia e "Tudo pronto?".
+    const manifesto = extensao!.packageJSON;
+    assert.strictEqual(manifesto.capabilities?.untrustedWorkspaces?.supported, 'limited');
+    assert.deepStrictEqual(manifesto.contributes.walkthroughs[0].steps.map((p: { id: string }) => p.id),
+        ['conta', 'copilot', 'permissao', 'modelo', 'pasta', 'gcc', 'usar']);
+    ok('extensão funciona em modo restrito e tem o guia de primeiros passos');
+
+    const { prontidao } = extensao!.exports as { prontidao: import('../../prontidao').Prontidao };
+    const itens = await prontidao.conferir();
+    const situacao = (id: string) => itens.find(i => i.id === id)?.situacao;
+    assert.deepStrictEqual(itens.map(i => i.id), ['ia', 'conta', 'permissao', 'pasta', 'gcc']);
+    assert.strictEqual(situacao('pasta'), 'ok');
+    assert.strictEqual(situacao('gcc'), 'ok');
+    // O VS Code de teste não tem Copilot: o tutor precisa dizer o que falta.
+    assert.ok(prontidao.bloqueioDaIa()?.botao, JSON.stringify(itens));
+    ok(`"Tudo pronto?" confere pasta e GCC e aponta o que falta para a IA (${prontidao.bloqueioDaIa()!.titulo})`);
+
     // Dica aparece enquanto digita (sem salvar).
     const editor = vscode.window.activeTextEditor!;
     await editor.edit(e => e.insert(new vscode.Position(14, 0), '    if (soma = 0) {}\n'));
@@ -134,7 +163,36 @@ export async function run(): Promise<void> {
     assert.strictEqual(botoes[0].command!.title, '🎓 Ponto 2 de 2');
     await vscode.commands.executeCommand('tutorSocratico.limparPontos', vazio);
     assert.strictEqual((await lentes()).length, 0);
+    // Verificação de qualidade: "Feito, próximo" avança sem a IA; o tutor confere tudo no fim.
+    marcacoes.definir(vazio, { pontos: [{ linha: 3, pergunta: 'Renomeie x para soma' }, { linha: 4, pergunta: 'Comente o laço' }] }, false, 'qualidade');
+    assert.deepStrictEqual((await lentes()).map(l => l.command!.title),
+        ['✨ Qualidade 1 de 2', '✅ Feito, próximo', '💡 Como fazer?', '✨ Conferir tudo agora', '✖ Esconder']);
+    await vscode.commands.executeCommand('tutorSocratico.proximoPonto', vazio);
+    assert.strictEqual((await lentes())[0].command!.title, '✨ Qualidade 2 de 2');
+    assert.strictEqual(marcacoes.marcarFeito(vazio), 0);
+    assert.strictEqual((await lentes()).length, 0, 'sem marcação enquanto espera a conferência');
+    assert.deepStrictEqual(marcacoes.esperandoConferencia(vazio)!.map(p => p.pergunta), ['Renomeie x para soma', 'Comente o laço']);
+    assert.strictEqual(marcacoes.doArquivo(vazio)!.feitos.length, 2, 'os feitos vão para o tutor conferir');
+    await vscode.commands.executeCommand('tutorSocratico.limparPontos', vazio);
     ok('ponto resolvido passa para o próximo, e "Esconder" tira a marcação');
+    ok('na qualidade, "Feito, próximo" avança sem a IA e guarda os pontos para uma conferência só no fim');
+
+    await vscode.commands.executeCommand('tutorSocratico.inserirCabecalho', vazio, 'Aluno Teste');
+    const comCabecalho = editorColado.document.getText();
+    assert.ok(comCabecalho.startsWith('/**\n * \\file teste_colado.c\n'), comCabecalho.slice(0, 120));
+    assert.ok(comCabecalho.includes(' * \\author Aluno Teste\n'));
+    assert.ok(comCabecalho.includes(' * Enunciado:\n * ' + ex4.enunciado.split('\n')[0].trim().slice(0, 20)), 'o enunciado do painel vai para o comentário');
+    assert.strictEqual(editorColado.document.getText(editorColado.selection), '(descreva em uma frase o que o programa faz)', 'o \\brief fica selecionado para o aluno escrever');
+    ok('"Inserir cabeçalho" coloca o Doxygen e, abaixo, o enunciado do painel');
+
+    assert.ok(manifesto.contributes.keybindings.some((k: { key: string; command: string }) =>
+        k.key === 'ctrl+alt+h' && k.command === 'tutorSocratico.inserirCabecalho'));
+    const fimDoArquivo = editorColado.document.lineAt(editorColado.document.lineCount - 1).range.end;
+    editorColado.selection = new vscode.Selection(fimDoArquivo, fimDoArquivo);
+    await vscode.commands.executeCommand('editor.action.insertSnippet', { langId: 'c', name: 'Comentário Doxygen de uma função' });
+    const comSnippet = editorColado.document.getText();
+    assert.ok(comSnippet.includes(' * \\param ') && comSnippet.includes(' * \\return '), comSnippet.slice(-200));
+    ok('atalho Ctrl+Alt+H e snippet "doxyf" (comentário de função com \\param e \\return)');
     await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     await vscode.workspace.fs.delete(vazio);

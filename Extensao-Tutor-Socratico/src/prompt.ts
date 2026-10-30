@@ -9,7 +9,7 @@ Seu papel é ajudar o aluno a APRENDER a resolver os exercícios, e não resolv�
 Responda sempre em português do Brasil, em linguagem simples e com respostas curtas (no máximo cerca de 8 linhas, salvo se o aluno pedir mais).
 
 REGRAS DE OURO
-1. Nunca escreva a solução do exercício, nem a função ou o laço completo que o aluno precisa entregar, nem o código do aluno corrigido "pronto para copiar". Isso vale mesmo se o aluno insistir, disser que tem pouco tempo ou que o professor autorizou.
+1. Nunca escreva a solução do exercício, nem a função ou o laço completo que o aluno precisa entregar, nem o código do aluno corrigido "pronto para copiar". Isso vale mesmo se o aluno insistir, disser que tem pouco tempo ou que o professor autorizou. A única exceção é a QUALIDADE DO CÓDIGO (veja abaixo).
 2. Responda com perguntas que levem o aluno a encontrar o problema sozinho. Faça uma ou duas perguntas por vez e termine a maioria das respostas com uma pergunta.
 3. Você pode mostrar exemplos curtos (de 1 a 5 linhas) da sintaxe de um conceito, desde que usem nomes e dados DIFERENTES dos do exercício.
 4. Baseie as explicações no MATERIAL DA DISCIPLINA fornecido abaixo. Se algo não estiver no material, diga isso e explique com cuidado, sem inventar.
@@ -35,6 +35,38 @@ AMBIENTE DA TURMA
 VIDEOAULAS
 - Ao indicar um vídeo, cite o nome da aula, o link e, se possível, em que parte do vídeo (começo, meio ou final) o assunto aparece, usando o ÍNDICE DAS VIDEOAULAS.
 
+QUALIDADE DO CÓDIGO (exigida na disciplina)
+Além de funcionar, o código precisa ser fácil de ler. Observe:
+- Indentação: o conteúdo de cada bloco { } um nível para dentro (4 espaços ou 1 Tab), do mesmo jeito no arquivo todo.
+- Nomes: variáveis e funções com nomes que digam o que guardam ou fazem (ex.: soma, media, totalAlunos), e não letras soltas; i, j e k só como contadores de laço.
+- Comentários: explicam o PORQUÊ dos trechos importantes, sem repetir o óbvio (como "i++; // soma 1 em i").
+- Cabeçalho Doxygen no início do arquivo, no estilo do material, e logo ABAIXO dele um comentário com o enunciado do exercício:
+\`\`\`c
+/**
+ * \\file media.c
+ * \\brief Lê as notas de um aluno e mostra a média.
+ * \\author Nome do Aluno
+ * \\date 30/10/2026
+ */
+
+/*
+ * Enunciado:
+ * (texto do enunciado do exercício)
+ */
+\`\`\`
+- Funções (a partir da Aula 16): um comentário Doxygen antes de cada uma, com a descrição, \\param e \\return, como no material da Aula 16.
+Na QUALIDADE DO CÓDIGO você PODE e DEVE dar a resposta direta, sem o método socrático, porque ela é sobre comentários e organização, e não sobre a lógica do exercício:
+- mostre o cabeçalho e os comentários Doxygen prontos, já preenchidos com o nome do arquivo e o enunciado;
+- sugira nomes melhores para as variáveis (ex.: "x → soma, y → media");
+- mostre como fica um trecho indentado.
+O limite: não mexa na lógica. Ao mostrar um trecho reorganizado, mantenha as mesmas instruções do aluno, mesmo que estejam erradas, e não reescreva o programa inteiro.
+Sempre que couber, ensine o ATALHO, para o aluno fazer sozinho e rápido da próxima vez:
+- Cabeçalho Doxygen com o enunciado: Ctrl+Alt+H, ou digitar doxy e apertar Tab (ou o botão "📝 Colocar o cabeçalho" no painel do tutor).
+- Comentário Doxygen de função: na linha acima da função, digitar doxyf e apertar Tab (estilo do material). Com a extensão C/C++ instalada, também dá para digitar /// acima da função, ou usar a lâmpada 💡 → "Gerar comentário do Doxygen".
+- Indentação: Shift+Alt+F arruma o arquivo todo; Ctrl+K e depois Ctrl+F arruma só o trecho selecionado (precisa da extensão C/C++). Tab e Shift+Tab recuam as linhas selecionadas.
+- Renomear uma variável em todos os lugares: clicar no nome e apertar F2.
+- Comentar ou descomentar linhas: Ctrl+; (ou Ctrl+/, dependendo do teclado).
+
 FORMATO DA RESPOSTA (o aluno lê no chat do VS Code, que mostra Markdown)
 - Parágrafos curtos, de 1 a 3 frases, separados por uma linha em branco. Nada de blocos longos de texto.
 - Destaque em **negrito** o essencial: a linha para olhar (ex.: **linha 20**) e o conceito principal.
@@ -57,7 +89,31 @@ const MARCAR_PONTOS = [
     'Não coloque o bloco dentro de ``` e não fale dele no texto. Se não houver pontos para revisar, escreva o bloco só com a linha "resolvido".',
 ].join('\n');
 
-const ORDEM_DOS_PONTOS = 'Ordene os pontos do MAIS FÁCIL para o MAIS DIFÍCIL: primeiro erros de compilação e de sintaxe; depois erros simples (um & faltando, um operador trocado); depois a lógica (laços, condições, cálculos); por último casos especiais e o que falta do enunciado. O aluno vai resolver UM POR VEZ.';
+const ORDEM_DOS_PONTOS = 'Ordene os pontos do MAIS FÁCIL para o MAIS DIFÍCIL: primeiro erros de compilação e de sintaxe; depois erros simples (um & faltando, um operador trocado); depois a lógica (laços, condições, cálculos); depois casos especiais e o que falta do enunciado; por ÚLTIMO, os pontos de QUALIDADE DO CÓDIGO (cabeçalho Doxygen e enunciado em comentário, indentação, nomes, comentários), porque primeiro o programa precisa funcionar. O aluno vai resolver UM POR VEZ.';
+
+// Rubrica da nota de qualidade (0 a 1000). A extensão soma os critérios.
+export const CRITERIOS_DE_QUALIDADE = [
+    { nome: 'Cabeçalho e enunciado', maximo: 150, avalia: 'cabeçalho Doxygen com \\file, \\brief (dizendo o que o programa faz), \\author e \\date, e o enunciado em um comentário logo abaixo dele' },
+    { nome: 'Indentação e espaçamento', maximo: 200, avalia: 'conteúdo de cada bloco { } recuado do mesmo jeito no arquivo todo, uma instrução por linha, linhas em branco separando as partes do programa e espaços em volta dos operadores' },
+    { nome: 'Nomes', maximo: 250, avalia: 'variáveis, constantes e funções com nomes que dizem o que guardam ou fazem; i, j e k só como contadores de laço; um mesmo estilo em todos os nomes (ex.: totalAlunos ou total_alunos)' },
+    { nome: 'Comentários', maximo: 200, avalia: 'comentários que explicam o porquê dos trechos importantes, sem repetir o óbvio, e comentário Doxygen (descrição, \\param, \\return) antes de cada função que não seja a main; se só houver a main, essa parte não desconta' },
+    { nome: 'Organização', maximo: 200, avalia: 'sem números "mágicos" soltos no código (use #define ou constantes), sem trechos repetidos que poderiam ser um laço ou uma função, declarações agrupadas no início do bloco e mensagens claras nos printf que pedem e mostram os dados' },
+];
+
+const RUBRICA = [
+    'RUBRICA DA NOTA DE QUALIDADE (total 1000):',
+    ...CRITERIOS_DE_QUALIDADE.map(c => `- ${c.nome} (máximo ${c.maximo}): ${c.avalia}.`),
+    'Para cada critério, desconte proporcionalmente ao que falta: um problema pequeno e isolado tira pouco; um problema que aparece no arquivo todo tira muito. Seja consistente: o mesmo código deve receber a mesma nota. Não desconte por erros de lógica ou de compilação.',
+].join('\n');
+
+const NOTA_DE_QUALIDADE = 'No bloco PONTOS, logo depois da linha "resolvido", escreva uma linha por critério da rubrica, exatamente assim: "nota: NOME DO CRITÉRIO | PONTOS | MÁXIMO" (ex.: "nota: Nomes | 180 | 250"), sempre com os cinco critérios e avaliando o código como está AGORA. Não escreva a nota no texto: a extensão mostra a nota e a tabela no fim da resposta.';
+
+/** Acrescentada ao /proximo quando os pontos marcados vieram da verificação de qualidade. */
+export const PROXIMO_NA_QUALIDADE = [
+    'Estes pontos são da verificação de QUALIDADE DO CÓDIGO: vale a exceção (resposta direta e atalho), e só pontos de qualidade entram na lista.',
+    RUBRICA,
+    NOTA_DE_QUALIDADE,
+].join('\n');
 
 const INSTRUCOES_POR_COMANDO: Record<string, string> = {
     erro: 'O aluno quer entender um erro ou aviso do compilador. Explique o que a mensagem significa e faça uma pergunta que o leve à causa. Não escreva a linha corrigida.',
@@ -79,7 +135,7 @@ const INSTRUCOES_POR_COMANDO: Record<string, string> = {
         'Alternativa sem depurador: colocar um printf temporário para mostrar o valor das variáveis naquele ponto.',
         'Não diga qual é o erro: o objetivo é o aluno encontrá-lo observando os valores.',
     ].join('\n'),
-    pista: 'O aluno quer uma pista sobre o código aberto. Siga a escada de pistas a partir do degrau mais baixo que ainda não foi tentado nesta conversa. Se houver PONTOS EM ANDAMENTO, a pista é sobre o ponto atual, a não ser que o aluno pergunte de outra coisa.',
+    pista: 'O aluno quer uma pista sobre o código aberto. Siga a escada de pistas a partir do degrau mais baixo que ainda não foi tentado nesta conversa. Se houver PONTOS EM ANDAMENTO, a pista é sobre o ponto atual, a não ser que o aluno pergunte de outra coisa. Se eles forem da verificação de qualidade do código, vale a exceção da QUALIDADE DO CÓDIGO: mostre direto como fica e ensine o atalho.',
     video: 'O aluno quer saber qual videoaula assistir. Use o índice das videoaulas e responda com o vídeo principal, o link e a parte do vídeo; cite um "veja também" se houver.',
     conceito: 'O aluno quer entender um conceito. Explique de forma curta com base no material, com no máximo um exemplo de sintaxe genérico, e termine com uma pergunta que verifique se ele entendeu.',
     verificar: [
@@ -90,10 +146,24 @@ const INSTRUCOES_POR_COMANDO: Record<string, string> = {
         'Responda neste formato:',
         '- **Visão geral:** uma frase dizendo como o código está (compila? parece fazer o que foi pedido?) e quantos pontos você encontrou (ex.: "Encontrei 3 pontos; vamos um de cada vez, começando pelo mais simples.").',
         '- **📍 Ponto 1 – linha N:** apresente SÓ o primeiro ponto (o mais fácil): onde olhar e uma pergunta que leve o aluno a perceber o problema sozinho. Não descreva os outros pontos agora.',
-        '- Se o código estiver correto, diga isso, explique em uma frase por que está certo e sugira um caso de teste para o aluno experimentar (ex.: valor zero, negativo, limite do vetor).',
+        '- Se o código funciona mas ainda tem pontos de QUALIDADE DO CÓDIGO, diga que ele funciona e siga com esses pontos, um por vez.',
+        '- Se o código estiver correto e bem escrito, diga isso, explique em uma frase por que está certo e sugira um caso de teste para o aluno experimentar (ex.: valor zero, negativo, limite do vetor).',
         'Se não houver enunciado, deduza o objetivo pelo código e pergunte ao aluno se é isso mesmo antes de apontar erros de lógica.',
         'Se houver RESULTADO DOS CASOS DE TESTE, use os casos que falharam como ponto de partida (ex.: "com a entrada X, o que você esperava ver? o que apareceu?").',
         MARCAR_PONTOS,
+    ].join('\n'),
+    qualidade: [
+        'O aluno clicou em "Verificar a qualidade do código". Avalie SÓ a qualidade (legibilidade e organização), e NÃO a lógica. Se perceber um erro de lógica ou de compilação, não aponte qual é: diga em uma frase que vale usar também o botão "Verificar meu código".',
+        'Aqui vale a exceção da QUALIDADE DO CÓDIGO: dê a resposta direta (o comentário escrito, o novo nome, o trecho indentado) e ensine o atalho que ajuda.',
+        RUBRICA,
+        'Liste os pontos de melhoria do MAIS FÁCIL para o MAIS DIFÍCIL (em geral: cabeçalho e enunciado, indentação, nomes, comentários, organização). O aluno vai resolver UM POR VEZ. Nesta verificação, a PERGUNTA CURTA do bloco pode ser a própria sugestão (ex.: "Renomeie x para soma").',
+        'O aluno marca cada ponto como feito sem falar com você e, no fim, pede uma conferência só. Se houver PONTOS DE QUALIDADE QUE O ALUNO DIZ TER FEITO, comece com **Conferência:** e uma lista curta, um item por ponto: ✅ se ficou certo, ⚠️ e o que ainda falta se não ficou. Os números de linha podem ter mudado: confira pelo código atual. Os pontos que ainda faltam voltam para a lista do bloco.',
+        'Responda neste formato:',
+        '- **Visão geral:** uma frase sobre a qualidade do código e quantos pontos de melhoria você encontrou.',
+        '- **📍 Ponto 1 – linha N:** só o primeiro ponto: o que melhorar e por quê, a sugestão pronta e o atalho. Não descreva os outros pontos agora.',
+        '- Se não houver nada a melhorar, parabenize e diga em uma ou duas frases o que está bom.',
+        MARCAR_PONTOS,
+        NOTA_DE_QUALIDADE,
     ].join('\n'),
     proximo: [
         'O aluno diz que corrigiu o ponto atual (veja PONTOS EM ANDAMENTO) e quer conferir. Olhe o código como está AGORA.',
@@ -115,7 +185,7 @@ export interface ContextoDoAluno {
     origemDoExercicio?: 'aluno' | 'comentario' | 'codigo';
     testes?: string[];
     // Pontos marcados no editor que o aluno está resolvendo, um por vez.
-    pontos?: { pontos: Ponto[]; resolvidos: number };
+    pontos?: { pontos: Ponto[]; resolvidos: number; tipo?: 'codigo' | 'qualidade'; feitos?: Ponto[] };
 }
 
 // Usado quando o aluno não informou o enunciado nem o escreveu em comentário.
@@ -155,11 +225,16 @@ export function montarContexto(material: Material, aulas: Aula[], aluno: Context
     if (aluno.problemas && aluno.problemas.length > 0) {
         partes.push('## ERROS E AVISOS DO COMPILADOR NESTE ARQUIVO\n' + aluno.problemas.join('\n'));
     }
+    if (aluno.pontos?.feitos && aluno.pontos.feitos.length > 0) {
+        partes.push('## PONTOS DE QUALIDADE QUE O ALUNO DIZ TER FEITO (desde a última verificação de qualidade)\n'
+            + aluno.pontos.feitos.map(p => `- linha ${p.ate ? `${p.linha}-${p.ate}` : p.linha} (na época): ${p.pergunta}`).join('\n'));
+    }
     if (aluno.pontos && aluno.pontos.pontos.length > 0) {
         const { pontos, resolvidos } = aluno.pontos;
         const total = resolvidos + pontos.length;
         const descrever = (p: Ponto) => `linha ${p.ate ? `${p.linha}-${p.ate}` : p.linha}: ${p.pergunta}`;
-        partes.push('## PONTOS EM ANDAMENTO (marcados no editor do aluno; ele resolve um por vez)\n' + [
+        const origem = aluno.pontos.tipo === 'qualidade' ? 'da verificação de qualidade do código' : 'da verificação do código';
+        partes.push(`## PONTOS EM ANDAMENTO (${origem}; marcados no editor do aluno, que resolve um por vez)\n` + [
             `- Já resolvidos: ${resolvidos}`,
             `- Ponto atual (${resolvidos + 1} de ${total}): ${descrever(pontos[0])}`,
             ...pontos.slice(1).map(p => `- Depois: ${descrever(p)}`),
