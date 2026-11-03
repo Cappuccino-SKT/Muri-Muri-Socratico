@@ -2,7 +2,7 @@
   "name": "tutor-socratico-c",
   "displayName": "Muri-Muri Socratico",
   "description": "Tutor de IA para Fundamentos de Programação em C: ajuda com perguntas e pistas, sem entregar a solução, e indica a videoaula certa para cada dúvida.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "Muri-Muri-Socratico",
   "author": {
     "name": "FelipeSKT"
@@ -30,7 +30,10 @@
       "supported": "limited",
       "description": "Em modo restrito, o chat, o painel e as dicas funcionam, mas o tutor não compila nem executa os programas da pasta.",
       "restrictedConfigurations": [
-        "tutorSocratico.caminhoGcc"
+        "tutorSocratico.caminhoGcc",
+        "tutorSocratico.argumentosGcc",
+        "tutorSocratico.bibliotecasRaylib",
+        "tutorSocratico.comandoMake"
       ]
     }
   },
@@ -47,10 +50,12 @@
     "copilot",
     "muri-muri",
     "muri",
-    "tutor socrático"
+    "tutor socrático",
+    "raylib"
   ],
   "activationEvents": [
-    "onLanguage:c"
+    "onLanguage:c",
+    "onLanguage:makefile"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -69,6 +74,14 @@
           {
             "name": "qualidade",
             "description": "Avaliar a qualidade do código (nomes, comentários, Doxygen, indentação), com nota de 0 a 1000"
+          },
+          {
+            "name": "plano",
+            "description": "Projeto do jogo: dividir o plano do seu jogo em etapas de desenvolvimento"
+          },
+          {
+            "name": "passo",
+            "description": "Projeto do jogo: ajuda com a próxima etapa do desenvolvimento"
           },
           {
             "name": "proximo",
@@ -241,6 +254,43 @@
         "title": "Verificar a qualidade do código (nota de 0 a 1000)",
         "category": "Tutor Socrático",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "tutorSocratico.rodarJogo",
+        "title": "Compilar e rodar o jogo (raylib)",
+        "category": "Tutor Socrático",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "tutorSocratico.compilarComMake",
+        "title": "Compilar com o Makefile (make)",
+        "category": "Tutor Socrático",
+        "icon": "$(tools)"
+      },
+      {
+        "command": "tutorSocratico.ajudaMakefile",
+        "title": "Como fazer o Makefile do projeto",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.comecarJogo",
+        "title": "Começar o projeto do jogo nesta pasta (Fundamentos 2)",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.encerrarJogo",
+        "title": "Voltar ao modo exercício (esta pasta não é um jogo)",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.planejarJogo",
+        "title": "Montar as etapas do desenvolvimento do jogo",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.proximaEtapa",
+        "title": "Ajuda com a próxima etapa do jogo",
+        "category": "Tutor Socrático"
       }
     ],
     "menus": {
@@ -266,6 +316,16 @@
           "command": "tutorSocratico.pedirPista",
           "when": "editorLangId == c",
           "group": "navigation@100"
+        },
+        {
+          "command": "tutorSocratico.rodarJogo",
+          "when": "editorLangId == c",
+          "group": "navigation@101"
+        },
+        {
+          "command": "tutorSocratico.compilarComMake",
+          "when": "editorLangId == c || editorLangId == makefile",
+          "group": "navigation@102"
         }
       ],
       "commandPalette": [
@@ -320,6 +380,25 @@
         {
           "command": "tutorSocratico.verificarQualidade",
           "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.rodarJogo",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.compilarComMake",
+          "when": "editorLangId == c || editorLangId == makefile"
+        },
+        {
+          "command": "tutorSocratico.ajudaMakefile"
+        },
+        {
+          "command": "tutorSocratico.comecarJogo",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.encerrarJogo",
+          "when": "editorLangId == c"
         }
       ]
     },
@@ -355,6 +434,27 @@
           "type": "boolean",
           "default": true,
           "description": "Avisa (sem IA) quando falta o cabeçalho Doxygen ou o enunciado em comentário no início do arquivo, e quando uma linha dentro de um bloco { } não está indentada."
+        },
+        "tutorSocratico.argumentosGcc": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Argumentos extras para o GCC, usados ao verificar e ao compilar o jogo. Ex.: se a raylib não foi instalada pelo MSYS2, `[\"-IC:/raylib/raylib/src\", \"-LC:/raylib/raylib/src\"]`."
+        },
+        "tutorSocratico.bibliotecasRaylib": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Bibliotecas ligadas ao compilar o jogo com **▶ Compilar e rodar o jogo**. Vazio = automático (no Windows: `-lraylib -lopengl32 -lgdi32 -lwinmm`; no Linux: `-lraylib -lm`)."
+        },
+        "tutorSocratico.comandoMake": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Comando do make usado por **🛠 Compilar com o Makefile**. Vazio = automático (`mingw32-make` no Windows, se existir; senão `make`)."
         }
       }
     },
@@ -440,6 +540,17 @@
             },
             "completionEvents": [
               "onView:tutorSocratico.exercicio"
+            ]
+          },
+          {
+            "id": "raylib",
+            "title": "8. (Fundamentos 2) Instalar e usar a raylib",
+            "description": "Para o projeto final: instalar a raylib, compilar o jogo (à mão e com o Makefile) e onde colocar as imagens e os sons.\n[Conferir se a raylib está instalada](command:tutorSocratico.conferirProntidao)",
+            "media": {
+              "markdown": "guia/8-raylib.md"
+            },
+            "completionEvents": [
+              "onCommand:tutorSocratico.rodarJogo"
             ]
           }
         ]

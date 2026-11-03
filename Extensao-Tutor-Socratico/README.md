@@ -112,6 +112,34 @@ Clique em **▶ Rodar testes**: ✅ passou, ❌ saída diferente, ⏱️ não te
 
 O painel mostra quantas ajudas você pediu em cada exercício: tente sozinho um pouco antes de pedir a próxima!
 
+## Projeto final de Fundamentos 2: jogo com a raylib
+O tutor também ajuda no projeto final, um jogo em C com a **raylib 6.2**. Quando o arquivo tem `#include "raylib.h"` (ou a pergunta fala da raylib), ele usa um material próprio em 7 partes:
+1. instalar e compilar;
+2. desenho e texto;
+3. teclado, mouse e controle;
+4. movimento, tempo e colisões;
+5. imagens e sons;
+6. organização do jogo (estados com `enum`, structs, vetores de inimigos, vários arquivos, recorde, câmera);
+7. compilação manual e Makefile (requisito do projeto).
+
+As funções do material foram conferidas no `raylib.h` oficial da versão 6.2.
+
+**🎮 Meu jogo**: o jogo não é um exercício, então nos arquivos do jogo o painel troca a caixa **Exercício** por uma área própria do projeto. Ela aparece quando o arquivo usa a raylib, ou depois de **🎮 Começar o projeto do jogo nesta pasta** (seção no fim do painel).
+- **Plano do jogo:** o aluno escreve o que planeja (ideia, teclas, como ganha e perde, telas, o que tem no jogo). O plano vale para todos os `.c` da pasta, e o tutor o usa como base de toda ajuda, como o enunciado num exercício. Nas verificações, ele compara o código com o plano e com a etapa atual.
+- **🧭 Montar as etapas do desenvolvimento** (`/plano`): o tutor divide o plano em 5 a 10 etapas pequenas, da versão mínima jogável ao acabamento, e elas viram uma lista no painel. O aluno marca cada etapa quando termina, sem gastar a IA. Ao refazer, as etapas já feitas continuam marcadas.
+- **➡️ Me ajude com a próxima etapa** (`/passo`): o tutor explica a etapa atual, quebra em passos menores e indica as funções da raylib, mas a lógica continua com perguntas.
+- O tutor **pode mostrar como usar a biblioteca** (exemplos curtos, como a documentação). A **lógica do jogo** é do aluno: nela, ele continua com perguntas e pistas.
+- No painel aparece o cartão **🎮 Projeto com raylib**, com o botão **▶ Compilar e rodar o jogo**. Ele:
+  - compila ligando a raylib (`-lraylib -lopengl32 -lgdi32 -lwinmm`);
+  - junta os outros `.c` da pasta que não têm `main`;
+  - roda o jogo na pasta do arquivo, onde ficam as imagens e os sons;
+  - explica os erros mais comuns ("raylib.h not found", "undefined reference to InitWindow").
+- **Compilação manual e Makefile:** o tutor explica as etapas (`gcc -c` → `.o` → ligação), as opções do GCC e cada parte do Makefile, a partir de um **modelo genérico** testado no PowerShell e no bash (`make`, `make run`, `make clean`). Adaptar o Makefile aos arquivos do projeto é tarefa do aluno: o tutor lê o Makefile da pasta e revisa o que falta.
+  - No Makefile, a linha de comando que começa com espaços em vez de TAB (o erro "missing separator") ganha um aviso, e a lâmpada 💡 troca os espaços por TAB.
+  - Com um Makefile na pasta, o cartão do jogo mostra **🛠 Compilar com o Makefile**: abre um terminal na pasta e roda o `make` (`mingw32-make` no Windows), para o aluno ver os comandos. Sem Makefile, aparece **📄 Como fazer o Makefile do projeto**.
+- Os casos de teste não servem para jogos e ficam escondidos nesses arquivos.
+- Em **🩺 Tudo pronto?** aparece o item **raylib encontrada**, e o guia ganhou o passo **8. Instalar e usar a raylib** (no Windows: `pacman -S mingw-w64-ucrt-x86_64-raylib` no MSYS2).
+
 ## Para o professor: casos de teste oficiais
 O arquivo `material/casos-oficiais.json` pode trazer casos de teste para os exercícios da lista. Eles são carregados quando o enunciado colado pelo aluno é reconhecido como aquele exercício:
 ```json
@@ -129,6 +157,9 @@ Os identificadores seguem o formato `aulaNN-exM` (ex.: `aula05-ex2`).
 | `tutorSocratico.perguntarExercicio` | `true` | Pergunta se o arquivo `.c` é um exercício ao abri-lo pela primeira vez. |
 | `tutorSocratico.verificarAoSalvar` | `true` | Verifica o arquivo com o GCC ao salvar. |
 | `tutorSocratico.caminhoGcc` | `gcc` | Caminho do executável do GCC. |
+| `tutorSocratico.argumentosGcc` | `[]` | Argumentos extras do GCC (ex.: `-I` e `-L` da raylib instalada fora do MSYS2). |
+| `tutorSocratico.comandoMake` | `""` | Comando do make; vazio = automático (`mingw32-make` no Windows, se existir). |
+| `tutorSocratico.bibliotecasRaylib` | `[]` | Bibliotecas ligadas ao jogo; vazio = automático (`-lraylib -lopengl32 -lgdi32 -lwinmm` no Windows). |
 | `editor.inlineSuggest.enabled` (para C) | `false` | Sugestões automáticas de código nos arquivos C (modo aprendizado). |
 
 ## Versão de testes

@@ -10,6 +10,7 @@ Saída em Notebook-Gemini/:
     02_Material_de_Ensino.md      as 21 aulas verificadas (conteúdo técnico)
     03_Transcricoes_Aulas_01-12.md
     04_Transcricoes_Aulas_13-21.md
+    05_Projeto_Raylib.md          material da raylib (projeto final de Fundamentos 2)
 
 Também copia os casos de teste aprovados de casos-oficiais-proposta.json
 para Extensao-Tutor-Socratico/material/casos-oficiais.json.
@@ -23,6 +24,8 @@ RAIZ = Path(__file__).resolve().parent
 MATERIAL = RAIZ / "Material-Ensino-Verificado"
 TRANSCRICOES = RAIZ / "Transcrição-Verificadas"
 INDICE_VIDEOS = TRANSCRICOES / "_INDICE_VIDEOAULAS.md"
+# Material do projeto final de Fundamentos 2 (jogo com a raylib).
+RAYLIB = RAIZ / "Material-Raylib"
 SAIDA = RAIZ / "Notebook-Gemini"
 
 # Cópias do material usadas pelos outros produtos do projeto.
@@ -127,6 +130,16 @@ def gerar_notebook():
             [bloco_de_aula(p, "Transcrição") for p in transcricoes if numero_da_aula(p.name) >= 13],
         ),
     }
+    if RAYLIB.exists():
+        materiais_raylib = sorted(RAYLIB.glob("Raylib_*.md"))
+        _, indice_raylib = sem_frontmatter(ler(RAYLIB / "_INDICE_RAYLIB.md"))
+        arquivos["05_Projeto_Raylib.md"] = juntar(
+            "Projeto Final de Fundamentos 2 – Jogo com a raylib",
+            "Material de apoio para o projeto final: fazer um jogo em C com a biblioteca raylib (versão 6.2). "
+            "Funções e assinaturas conferidas no raylib.h oficial. Não há videoaulas deste material: "
+            "indique o cheatsheet e os exemplos oficiais citados em cada parte.",
+            [rebaixar_titulos(indice_raylib)] + [bloco_de_aula(p, "Material") for p in materiais_raylib],
+        )
 
     for nome, conteudo in arquivos.items():
         (SAIDA / nome).write_text(conteudo, encoding="utf-8")
@@ -163,6 +176,11 @@ def atualizar_copias():
         for arquivo in MATERIAL.glob("*.md"):
             shutil.copy2(arquivo, pasta_aulas / arquivo.name)
         shutil.copy2(INDICE_VIDEOS, destino / INDICE_VIDEOS.name)
+        if RAYLIB.exists():
+            pasta_raylib = destino / "raylib"
+            pasta_raylib.mkdir(exist_ok=True)
+            for arquivo in RAYLIB.glob("*.md"):
+                shutil.copy2(arquivo, pasta_raylib / arquivo.name)
         print(f"Cópia atualizada: {destino.relative_to(RAIZ)}")
 
 

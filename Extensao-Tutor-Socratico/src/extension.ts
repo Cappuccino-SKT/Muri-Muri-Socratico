@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { carregarMaterial, Material, selecionarAulas } from './material';
-import { verificarComGcc } from './gcc';
+import { carregarMaterial, ehProjetoRaylib, INCLUI_RAYLIB, Material, selecionarAulas } from './material';
+import { bibliotecasPadraoDaRaylib, compilarJogo, verificarComGcc } from './gcc';
+import { execFile, spawn, ChildProcess } from 'child_process';
+import * as fs from 'fs';
 import { instrucaoDoComando, montarContexto, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from './prompt';
 import { Exercicios } from './exercicios';
 import { ID_PAINEL, InfoDoPainel, PainelExercicio } from './painel';
@@ -11,12 +13,14 @@ import { analisarCodigo, limparCodigo, traduzirMensagemGcc } from './didatico';
 import { comentariosDoInicio, montarCabecalho, montarComentarioDoEnunciado, temCabecalhoDoxygen, temEnunciadoNoComentario, verificarQualidade, BRIEF_A_PREENCHER } from './cabecalho';
 import { IdDaPendencia, JUSTIFICATIVA, Prontidao } from './prontidao';
 import { comentarioInicial, reconhecerExercicio } from './reconhecer';
-import { BlocoDePontos, cartaoDaNota, FiltroDoBloco, somarNota } from './pontos';
+import { verificarMakefile } from './makefile';
+import { ProjetosDeJogo } from './projeto';
+import { BlocoDePontos, cartaoDaNota, Etapa, FiltroDoBloco, somarNota } from './pontos';
 import { Marcacoes } from './marcacoes';
 
 const ID_PARTICIPANTE = 'tutor-socratico.tutor';
 // Comandos do chat que contam como "ajuda pedida" no exercício.
-const COMANDOS_DE_AJUDA = new Set([undefined, 'pista', 'erro', 'teste', 'verificar', 'depurar']);
+const COMANDOS_DE_AJUDA = new Set([undefined, 'pista', 'erro', 'teste', 'verificar', 'depurar', 'passo']);
 
 let material: Material;
 let catalogo: Catalogo;
@@ -26,6 +30,7 @@ let exercicios: Exercicios;
 let painel: PainelExercicio;
 let barraModo: vscode.StatusBarItem;
 let marcacoes: Marcacoes;
+let projetos: ProjetosDeJogo;
 let prontidao: Prontidao;
 let acessoAosModelos: vscode.LanguageModelAccessInformation;
 let contextoGlobal: vscode.ExtensionContext;
@@ -40,10 +45,11 @@ export function activate(context: vscode.ExtensionContext) {
     diagnosticosDicas = vscode.languages.createDiagnosticCollection('Tutor Socrático (dicas)');
     exercicios = new Exercicios(context.globalState);
     marcacoes = new Marcacoes(context.extensionUri);
-    prontidao = new Prontidao(context);
+    prontidao = new Prontidao(context, () => vscode.workspace.textDocuments.some(d => d.languageId === 'c' && INCLUI_RAYLIB.test(d.getText())));
     acessoAosModelos = context.languageModelAccessInformation;
     contextoGlobal = context;
-    painel =new PainelExercicio(exercicios, salvarEnunciado, modoAprendizadoLigado, ultimoResultado, infoDoExercicio);
+    projetos = new ProjetosDeJogo(context.globalState);
+    painel = new PainelExercicio(exercicios, salvarEnunciado, modoAprendizadoLigado, ultimoResultado, infoDoExercicio, projetos, emProjetoDeJogo);
 
     const tutor = vscode.chat.createChatParticipant(ID_PARTICIPANTE, responder);
     tutor.iconPath = new vscode.ThemeIcon('mortar-board');
@@ -67,7 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
         prontidao,
         prontidao.onDidChange(itens => painel.mostrarProntidao(itens)),
         vscode.commands.registerCommand('tutorSocratico.liberarIa', () => prontidao.liberarIa()),
-        vscode.commands.registerCommand('tutorSocratico.abrirGuia', () => prontidao.abrirGuia()),
+        vscode.commands.registerCommand('tutorSocratico.abrirGuia', (passo?: string) => prontidao.abrirGuia(typeof passo === 'string' ? passo : undefined)),
         vscode.commands.registerCommand('tutorSocratico.conferirProntidao', () => prontidao.conferir()),
         vscode.commands.registerCommand('tutorSocratico.resolverPendencia', (id: IdDaPendencia) => prontidao.resolver(id)),
         vscode.commands.registerCommand('tutorSocratico.inserirCabecalho', inserirCabecalho),
@@ -101,6 +107,19 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.workspace.onDidCloseTextDocument(documento => diagnosticosDicas.delete(documento.uri)),
         vscode.commands.registerCommand('tutorSocratico.verificarCodigo', verificarCodigo),
         vscode.commands.registerCommand('tutorSocratico.verificarQualidade', verificarQualidadeDoCodigo),
+        vscode.commands.registerCommand('tutorSocratico.rodarJogo', rodarJogo),
+        projetos.onDidChange(() => painel.atualizar()),
+        vscode.commands.registerCommand('tutorSocratico.comecarJogo', comecarJogo),
+        vscode.commands.registerCommand('tutorSocratico.encerrarJogo', async (uri?: vscode.Uri) => {
+            const alvo = uri instanceof vscode.Uri ? uri : documentoCAberto()?.uri;
+            if (alvo) {
+                await projetos.encerrar(alvo);
+            }
+        }),
+        vscode.commands.registerCommand('tutorSocratico.planejarJogo', () => abrirChat('@tutor /plano Este é o plano do meu jogo. Me ajude a dividir o desenvolvimento em etapas.', false)),
+        vscode.commands.registerCommand('tutorSocratico.proximaEtapa', () => abrirChat('@tutor /passo Me ajude com a próxima etapa do meu jogo.', false)),
+        vscode.commands.registerCommand('tutorSocratico.compilarComMake', compilarComMake),
+        vscode.commands.registerCommand('tutorSocratico.ajudaMakefile', () => abrirChat('@tutor Como faço o Makefile do meu projeto? Quero entender cada parte para montar o meu.', false)),
         vscode.commands.registerCommand('tutorSocratico.perguntar', () => abrirChat('@tutor ', true)),
         vscode.commands.registerCommand('tutorSocratico.rodarTestes', rodarTestes),
         vscode.commands.registerCommand('tutorSocratico.pistaSobreTeste', pistaSobreTeste),
@@ -108,6 +127,9 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('tutorSocratico.alternarModoAprendizado', alternarModoAprendizado),
         vscode.window.onDidChangeActiveTextEditor(editor => {
             painel.atualizar(editor);
+            if (editor && editor.document.languageId === 'c' && INCLUI_RAYLIB.test(editor.document.getText())) {
+                prontidao.conferirComAtraso();
+            }
             atualizarBarraModo(editor);
             perguntarSeEhExercicio(editor);
         }),
@@ -128,6 +150,9 @@ export function activate(context: vscode.ExtensionContext) {
                 verificarDocumento(editor.document, true);
             }
         }),
+        vscode.languages.registerCodeActionsProvider({ language: 'makefile' }, { provideCodeActions: trocarEspacosPorTab }, {
+            providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
+        }),
         vscode.languages.registerCodeActionsProvider({ language: 'c' }, new AcoesDoTutor(), {
             providedCodeActionKinds: [vscode.CodeActionKind.QuickFix],
         }),
@@ -145,10 +170,14 @@ export function activate(context: vscode.ExtensionContext) {
     perguntarSeEhExercicio(vscode.window.activeTextEditor);
     avisarPendenciasAoIniciar();
     // Usado pelos testes de integração.
-    return { marcacoes, prontidao };
+    return { marcacoes, prontidao, projetos };
 }
 
-export function deactivate() {}
+export function deactivate() {
+    if (jogoRodando && jogoRodando.exitCode === null) {
+        jogoRodando.kill();
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Chat: @tutor
@@ -179,7 +208,12 @@ async function responder(
     const doArquivo = documento ? exercicioDoArquivo(documento) : undefined;
     const exercicio = doArquivo?.texto;
     const aulaDoArquivo = aulaDoExercicio(doArquivo?.id);
-    let aulas = selecionarAulas(material, `${request.command ?? ''} ${pergunta} ${exercicio ?? ''} ${problemas.join(' ')}`, codigo);
+    // Com um Makefile aberto (ou no projeto com raylib), o tutor lê o Makefile da pasta.
+    const makefileAberto = vscode.window.activeTextEditor?.document.languageId === 'makefile';
+    const projetoDoJogo = documento && emProjetoDeJogo(documento.uri) ? projetos.doArquivo(documento.uri) : undefined;
+    const projetoRaylib = makefileAberto || !!projetoDoJogo || ehProjetoRaylib(pergunta, codigo ?? '') || (!!documento && emProjetoDeJogo(documento.uri));
+    const makefile = projetoRaylib ? makefileDoProjeto(documento) : undefined;
+    let aulas = selecionarAulas(material, `${request.command ?? ''} ${pergunta} ${exercicio ?? ''} ${problemas.join(' ')} ${makefileAberto ? 'makefile' : ''}`, codigo);
     // A aula do exercício da lista vem sempre primeiro (no /quiz, só se o aluno não citou outra aula).
     const aulaCitada = /\baula\s*\d+/i.test(pergunta);
     if (aulaDoArquivo && !(request.command === 'quiz' && aulaCitada)) {
@@ -210,6 +244,9 @@ async function responder(
             exercicio,
             origemDoExercicio: doArquivo?.origem,
             testes: documento ? resumoDosTestes(documento.uri) : undefined,
+            projetoRaylib,
+            makefile,
+            jogo: documento && emProjetoDeJogo(documento.uri) ? { plano: projetoDoJogo?.plano ?? '', etapas: projetoDoJogo?.etapas ?? [] } : undefined,
             pontos: documento ? marcacoes.doArquivo(documento.uri) : undefined,
         })),
         vscode.LanguageModelChatMessage.Assistant('Entendido. Vou ajudar o aluno com perguntas e pistas, seguindo o material, sem entregar a solução.'),
@@ -233,6 +270,7 @@ async function responder(
     }
     const filtro = new FiltroDoBloco();
     let bloco: BlocoDePontos | undefined;
+    let etapas: Etapa[] | undefined;
     try {
         const resposta = await request.model.sendRequest(mensagens, { justification: JUSTIFICATIVA }, token);
         for await (const trecho of resposta.text) {
@@ -246,6 +284,7 @@ async function responder(
             stream.markdown(fim.resto);
         }
         bloco = fim.bloco;
+        etapas = fim.etapas;
     } catch (erro) {
         if (erro instanceof vscode.LanguageModelError && erro.code === vscode.LanguageModelError.NoPermissions().code) {
             explicarPermissao(stream);
@@ -255,6 +294,13 @@ async function responder(
         }
         prontidao.conferirComAtraso();
         return { metadata: { comando: request.command, falhou: true } };
+    }
+    if (documento && etapas && etapas.length > 0 && request.command === 'plano') {
+        await projetos.comecar(documento.uri);
+        await projetos.definirEtapas(documento.uri, etapas);
+        stream.markdown(`\n\n---\n📋 Coloquei as ${etapas.length} etapas no painel do tutor (🎮 Meu jogo). Marque cada uma quando terminar.`);
+        stream.button({ command: 'tutorSocratico.exercicio.focus', title: '📋 Ver as etapas no painel' });
+        stream.button({ command: 'tutorSocratico.proximaEtapa', title: '➡️ Me ajude com a primeira etapa' });
     }
     if (documento && bloco && (request.command === 'verificar' || request.command === 'qualidade' || request.command === 'proximo')) {
         marcacoes.definir(documento.uri, bloco, request.command === 'proximo', naQualidade ? 'qualidade' : 'codigo');
@@ -418,6 +464,10 @@ class AcoesDoTutor implements vscode.CodeActionProvider {
 
 /** Código do diagnóstico com link para a videoaula da aula indicada. */
 function codigoDaAula(aula: number): vscode.Diagnostic['code'] {
+    if (aula > 100) {
+        // Material da raylib: não tem videoaula.
+        return `Raylib ${aula - 100}`;
+    }
     const rotulo = `Aula ${String(aula).padStart(2, '0')}`;
     const video = catalogo.videos.get(aula);
     return video ? { value: rotulo, target: vscode.Uri.parse(video) } : rotulo;
@@ -425,6 +475,15 @@ function codigoDaAula(aula: number): vscode.Diagnostic['code'] {
 
 function analisarDocumento(documento: vscode.TextDocument) {
     const ativo = vscode.workspace.getConfiguration('tutorSocratico').get<boolean>('dicasOffline', true);
+    if (documento.languageId === 'makefile' && ativo) {
+        diagnosticosDicas.set(documento.uri, verificarMakefile(documento.getText()).map(p => {
+            const diagnostico = new vscode.Diagnostic(new vscode.Range(p.linha - 1, 0, p.linha - 1, p.espacos), '🎓 ' + p.mensagem, vscode.DiagnosticSeverity.Warning);
+            diagnostico.source = 'Tutor Socrático';
+            diagnostico.code = codigoDaAula(107);
+            return diagnostico;
+        }));
+        return;
+    }
     if (documento.languageId !== 'c' || !ativo) {
         diagnosticosDicas.delete(documento.uri);
         return;
@@ -455,7 +514,7 @@ const FONTE_QUALIDADE = 'Tutor Socrático · qualidade';
 const atrasos = new Map<string, NodeJS.Timeout>();
 
 function analisarComAtraso(documento: vscode.TextDocument) {
-    if (documento.languageId !== 'c') {
+    if (documento.languageId !== 'c' && documento.languageId !== 'makefile') {
         return;
     }
     const chave = documento.uri.toString();
@@ -502,7 +561,7 @@ async function perguntarSeEhExercicio(editor: vscode.TextEditor | undefined) {
     }
     const uri = editor.document.uri;
     const perguntar = vscode.workspace.getConfiguration('tutorSocratico').get<boolean>('perguntarExercicio', true);
-    if (!perguntar || exercicios.jaPerguntado(uri) || perguntasAbertas.has(uri.toString())) {
+    if (!perguntar || exercicios.jaPerguntado(uri) || perguntasAbertas.has(uri.toString()) || emProjetoDeJogo(uri)) {
         return;
     }
     perguntasAbertas.add(uri.toString());
@@ -598,6 +657,205 @@ async function verificarCodigo(uri?: vscode.Uri) {
 }
 
 // ---------------------------------------------------------------------------
+// Projeto final com a raylib: compilar e rodar o jogo
+// ---------------------------------------------------------------------------
+
+/** Argumentos extras do GCC (ex.: -I e -L da raylib instalada em outra pasta). */
+function argumentosGcc(): string[] {
+    return vscode.workspace.getConfiguration('tutorSocratico').get<string[]>('argumentosGcc', []).filter(a => typeof a === 'string' && a.trim());
+}
+
+let saidaDoJogo: vscode.OutputChannel | undefined;
+let jogoRodando: ChildProcess | undefined;
+
+/**
+ * Compila o jogo ligando a raylib e o executa na pasta do arquivo (onde ficam
+ * as imagens e os sons). Junta os outros .c da pasta que não têm main, para
+ * projetos divididos em vários arquivos.
+ */
+async function rodarJogo(uri?: vscode.Uri) {
+    const documento = uri instanceof vscode.Uri
+        ? vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString())
+        : documentoCAberto();
+    if (!documento || documento.languageId !== 'c' || documento.uri.scheme !== 'file') {
+        vscode.window.showInformationMessage('Abra o arquivo .c do jogo para compilar e rodar.');
+        return;
+    }
+    if (!vscode.workspace.isTrusted) {
+        avisarModoRestrito();
+        return;
+    }
+    await vscode.workspace.saveAll(false);
+    const pasta = path.dirname(documento.fileName);
+    const outros = fs.readdirSync(pasta)
+        .filter(nome => nome.toLowerCase().endsWith('.c') && path.join(pasta, nome).toLowerCase() !== documento.fileName.toLowerCase())
+        .map(nome => path.join(pasta, nome))
+        .filter(caminho => !/\bmain\s*\(/.test(limparCodigo(fs.readFileSync(caminho, 'utf8'))));
+    const nome = path.basename(documento.fileName, '.c');
+    const executavel = path.join(pasta, process.platform === 'win32' ? nome + '.exe' : nome);
+
+    saidaDoJogo ??= vscode.window.createOutputChannel('Tutor Socrático: jogo');
+    saidaDoJogo.clear();
+    // Um jogo ainda aberto impede de gravar o .exe novo.
+    if (jogoRodando && jogoRodando.exitCode === null) {
+        jogoRodando.kill();
+    }
+    const configuracao = vscode.workspace.getConfiguration('tutorSocratico');
+    const caminhoGcc = configuracao.get<string>('caminhoGcc', 'gcc');
+    const configuradas = configuracao.get<string[]>('bibliotecasRaylib', []).filter(b => typeof b === 'string' && b.trim());
+    const bibliotecas = configuradas.length > 0 ? configuradas : bibliotecasPadraoDaRaylib();
+    const arquivos = [documento.fileName, ...outros];
+    saidaDoJogo.appendLine(`🎮 Compilando: ${arquivos.map(a => path.basename(a)).join(', ')}`);
+    saidaDoJogo.appendLine(`   gcc ... -o ${path.basename(executavel)} ${bibliotecas.join(' ')}`);
+
+    let resultado;
+    try {
+        resultado = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Window, title: '🎮 Compilando o jogo...' },
+            () => compilarJogo(caminhoGcc, arquivos, executavel, argumentosGcc(), bibliotecas));
+    } catch (erro) {
+        vscode.window.showWarningMessage(erro instanceof Error ? erro.message : String(erro));
+        return;
+    }
+    if (resultado.saida.trim()) {
+        saidaDoJogo.appendLine(resultado.saida.trimEnd());
+    }
+    if (!resultado.compilou) {
+        saidaDoJogo.show(true);
+        const escolha = await vscode.window.showErrorMessage(
+            `O jogo não compilou. ${resultado.explicacao ?? 'Veja os erros na aba Problemas e na saída "Tutor Socrático: jogo".'}`,
+            'Pedir uma pista', 'Instalar a raylib');
+        if (escolha === 'Pedir uma pista') {
+            await abrirChat(`@tutor /erro Meu jogo com a raylib não compilou: ${primeiraLinhaDeErro(resultado.saida)}`, false);
+        } else if (escolha === 'Instalar a raylib') {
+            await prontidao.abrirGuia('raylib');
+        }
+        await verificarDocumento(documento, false);
+        return;
+    }
+    saidaDoJogo.appendLine('▶ Rodando o jogo. O que ele escrever com printf aparece aqui.');
+    const processo = spawn(executavel, [], { cwd: pasta });
+    jogoRodando = processo;
+    processo.stdout?.on('data', dados => saidaDoJogo?.append(String(dados)));
+    processo.stderr?.on('data', dados => saidaDoJogo?.append(String(dados)));
+    processo.on('error', erro => saidaDoJogo?.appendLine(`Não consegui executar o jogo: ${erro.message}`));
+    processo.on('exit', codigo => saidaDoJogo?.appendLine(`■ O jogo terminou (código ${codigo ?? '?'}).`));
+}
+
+/** O arquivo é do projeto do jogo: usa a raylib ou a pasta já tem um projeto começado. */
+function emProjetoDeJogo(uri: vscode.Uri): boolean {
+    if (projetos.doArquivo(uri)) {
+        return true;
+    }
+    const documento = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
+    return !!documento && INCLUI_RAYLIB.test(documento.getText());
+}
+
+/** Começa o projeto do jogo na pasta do arquivo: o painel passa a mostrar "Meu jogo". */
+async function comecarJogo(uri?: vscode.Uri) {
+    const alvo = uri instanceof vscode.Uri ? uri : documentoCAberto()?.uri;
+    if (!alvo) {
+        vscode.window.showInformationMessage('Abra um arquivo .c na pasta do seu jogo para começar o projeto.');
+        return;
+    }
+    await projetos.comecar(alvo);
+    await vscode.commands.executeCommand(`${ID_PAINEL}.focus`);
+}
+
+const NOMES_DO_MAKEFILE = ['Makefile', 'makefile', 'GNUmakefile'];
+
+function acharMakefile(pasta: string): string | undefined {
+    return NOMES_DO_MAKEFILE.map(nome => path.join(pasta, nome)).find(caminho => fs.existsSync(caminho));
+}
+
+/** O Makefile aberto no editor ou, se não houver, o da pasta do arquivo .c. */
+function makefileDoProjeto(documento?: vscode.TextDocument): { nome: string; texto: string } | undefined {
+    const ativo = vscode.window.activeTextEditor?.document;
+    if (ativo && ativo.languageId === 'makefile') {
+        return { nome: path.basename(ativo.fileName), texto: ativo.getText() };
+    }
+    const caminho = documento && documento.uri.scheme === 'file' ? acharMakefile(path.dirname(documento.fileName)) : undefined;
+    if (!caminho) {
+        return undefined;
+    }
+    const aberto = vscode.workspace.textDocuments.find(d => d.fileName.toLowerCase() === caminho.toLowerCase());
+    try {
+        return { nome: path.basename(caminho), texto: aberto ? aberto.getText() : fs.readFileSync(caminho, 'utf8') };
+    } catch {
+        return undefined;
+    }
+}
+
+/** Lâmpada no Makefile: troca os espaços do começo da linha por um TAB. */
+function trocarEspacosPorTab(documento: vscode.TextDocument, _intervalo: vscode.Range, contexto: vscode.CodeActionContext): vscode.CodeAction[] {
+    return contexto.diagnostics
+        .filter(d => d.source === 'Tutor Socrático' && d.message.includes('TAB'))
+        .map(d => {
+            const acao = new vscode.CodeAction('↹ Trocar os espaços do começo da linha por TAB', vscode.CodeActionKind.QuickFix);
+            acao.diagnostics = [d];
+            acao.isPreferred = true;
+            acao.edit = new vscode.WorkspaceEdit();
+            acao.edit.replace(documento.uri, new vscode.Range(d.range.start.line, 0, d.range.start.line, d.range.end.character), '\t');
+            return acao;
+        });
+}
+
+let comandoMakeAutomatico: string | undefined;
+
+/** No Windows, o make do MSYS2/MinGW se chama mingw32-make. */
+async function comandoMake(): Promise<string> {
+    const configurado = vscode.workspace.getConfiguration('tutorSocratico').get<string>('comandoMake', '').trim();
+    if (configurado) {
+        return configurado;
+    }
+    if (comandoMakeAutomatico === undefined) {
+        const existe = (comando: string) => new Promise<boolean>(resolve =>
+            execFile(comando, ['--version'], { timeout: 8000, windowsHide: true }, erro => resolve(!erro)));
+        comandoMakeAutomatico = process.platform === 'win32' && await existe('mingw32-make') ? 'mingw32-make' : 'make';
+    }
+    return comandoMakeAutomatico;
+}
+
+let terminalDoMake: vscode.Terminal | undefined;
+let pastaDoTerminal: string | undefined;
+
+/**
+ * Compila pelo Makefile do projeto num terminal do VS Code, como o aluno faria
+ * à mão: assim ele vê os comandos que o make executa.
+ */
+async function compilarComMake(uri?: vscode.Uri) {
+    const documento = uri instanceof vscode.Uri
+        ? vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString())
+        : vscode.window.activeTextEditor?.document;
+    const pasta = documento && documento.uri.scheme === 'file' ? path.dirname(documento.fileName) : undefined;
+    if (!pasta || !acharMakefile(pasta)) {
+        const escolha = await vscode.window.showInformationMessage(
+            'Não há um Makefile na pasta deste arquivo. Quer ajuda do tutor para montar o seu?', 'Como fazer o Makefile');
+        if (escolha) {
+            await vscode.commands.executeCommand('tutorSocratico.ajudaMakefile');
+        }
+        return;
+    }
+    if (!vscode.workspace.isTrusted) {
+        avisarModoRestrito();
+        return;
+    }
+    await vscode.workspace.saveAll(false);
+    const comando = await comandoMake();
+    if (!terminalDoMake || terminalDoMake.exitStatus !== undefined || pastaDoTerminal !== pasta) {
+        terminalDoMake?.dispose();
+        terminalDoMake = vscode.window.createTerminal({ name: 'Tutor Socrático: make', cwd: pasta });
+        pastaDoTerminal = pasta;
+    }
+    terminalDoMake.show();
+    terminalDoMake.sendText(comando);
+}
+
+function primeiraLinhaDeErro(saida: string): string {
+    return saida.split(/\r?\n/).find(l => /error|undefined reference|cannot find/i.test(l))?.trim().slice(0, 300) ?? 'erro ao compilar';
+}
+
+// ---------------------------------------------------------------------------
 // Casos de teste
 // ---------------------------------------------------------------------------
 
@@ -626,6 +884,10 @@ async function rodarTestes(uri?: vscode.Uri): Promise<ResultadoDosTestes | undef
     if (!vscode.workspace.isTrusted) {
         painel.mostrarTestes(documento.uri, { erro: '🔒 Esta pasta está em modo restrito, então o tutor não compila nem executa programas. Clique em "Confiar nesta pasta" no aviso do topo do painel.' });
         avisarModoRestrito();
+        return undefined;
+    }
+    if (INCLUI_RAYLIB.test(documento.getText())) {
+        painel.mostrarTestes(documento.uri, { erro: '🎮 Este arquivo usa a raylib: os casos de teste não servem para jogos. Use "▶ Compilar e rodar o jogo" e teste jogando.' });
         return undefined;
     }
     const casos = exercicios.casos(documento.uri);
@@ -813,6 +1075,8 @@ function infoDoExercicio(uri: vscode.Uri): InfoDoPainel {
         ajudas: exercicios.ajudas(uri),
         ponto: pontoDoPainel(uri),
         nota: notaDoPainel(uri),
+        raylib: documento ? INCLUI_RAYLIB.test(documento.getText()) : false,
+        makefile: !!acharMakefile(path.dirname(uri.fsPath)),
         qualidadeParaConferir: marcacoes.esperandoConferencia(uri)?.length,
         semCabecalho: documento ? !temCabecalhoDoxygen(documento.getText()) || !temEnunciadoNoComentario(documento.getText()) : false,
     };
@@ -909,7 +1173,7 @@ async function verificarDocumento(documento: vscode.TextDocument, manual: boolea
     }
     const caminhoGcc = vscode.workspace.getConfiguration('tutorSocratico').get<string>('caminhoGcc', 'gcc');
     try {
-        const problemas = await verificarComGcc(caminhoGcc, documento.fileName);
+        const problemas = await verificarComGcc(caminhoGcc, documento.fileName, argumentosGcc());
         diagnosticosGcc.set(documento.uri, problemas
             .filter(p => p.gravidade !== 'note')
             .map(p => {

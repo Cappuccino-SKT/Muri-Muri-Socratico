@@ -88,8 +88,14 @@ export async function run(): Promise<void> {
     assert.deepStrictEqual(dicas.map(d => d.range.start.line + 1).sort((a, b) => a - b), [18, 27]);
     ok('dicas offline marcam o laço "<= 5" (linha 18) e a divisão inteira (linha 27)');
 
-    const acoesDica = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-        'vscode.executeCodeActionProvider', documento.uri, dicas[0].range);
+    // A lâmpada pode ser consultada antes de o VS Code ligar as dicas a ela: tenta algumas vezes.
+    let acoesDica: vscode.CodeAction[] = [];
+    for (let tentativa = 0; tentativa < 10 && !acoesDica.some(a => a.title.startsWith('📺 Assistir à videoaula')); tentativa++) {
+        if (tentativa > 0) {
+            await esperar(300);
+        }
+        acoesDica = await vscode.commands.executeCommand<vscode.CodeAction[]>('vscode.executeCodeActionProvider', documento.uri, dicas[0].range);
+    }
     assert.ok(acoesDica.some(a => a.title.startsWith('📺 Assistir à videoaula')), acoesDica.map(a => a.title).join(' | '));
     ok('lâmpada oferece "Assistir à videoaula" nas dicas');
 
@@ -107,7 +113,7 @@ export async function run(): Promise<void> {
     const manifesto = extensao!.packageJSON;
     assert.strictEqual(manifesto.capabilities?.untrustedWorkspaces?.supported, 'limited');
     assert.deepStrictEqual(manifesto.contributes.walkthroughs[0].steps.map((p: { id: string }) => p.id),
-        ['conta', 'copilot', 'permissao', 'modelo', 'pasta', 'gcc', 'usar']);
+        ['conta', 'copilot', 'permissao', 'modelo', 'pasta', 'gcc', 'usar', 'raylib']);
     ok('extensão funciona em modo restrito e tem o guia de primeiros passos');
 
     const { prontidao } = extensao!.exports as { prontidao: import('../../prontidao').Prontidao };
@@ -187,15 +193,88 @@ export async function run(): Promise<void> {
 
     assert.ok(manifesto.contributes.keybindings.some((k: { key: string; command: string }) =>
         k.key === 'ctrl+alt+h' && k.command === 'tutorSocratico.inserirCabecalho'));
-    const fimDoArquivo = editorColado.document.lineAt(editorColado.document.lineCount - 1).range.end;
-    editorColado.selection = new vscode.Selection(fimDoArquivo, fimDoArquivo);
+    // O snippet entra no editor ativo: garante o foco antes de inserir e espera o texto aparecer.
+    const editorDoSnippet = await vscode.window.showTextDocument(editorColado.document, { preserveFocus: false });
+    const fimDoArquivo = editorDoSnippet.document.lineAt(editorDoSnippet.document.lineCount - 1).range.end;
+    editorDoSnippet.selection = new vscode.Selection(fimDoArquivo, fimDoArquivo);
     await vscode.commands.executeCommand('editor.action.insertSnippet', { langId: 'c', name: 'Comentário Doxygen de uma função' });
-    const comSnippet = editorColado.document.getText();
+    const comSnippet = await aguardar(() => {
+        const texto = editorDoSnippet.document.getText();
+        return texto.includes(' * \\param ') ? texto : undefined;
+    }, 5000).catch(() => editorDoSnippet.document.getText());
     assert.ok(comSnippet.includes(' * \\param ') && comSnippet.includes(' * \\return '), comSnippet.slice(-200));
     ok('atalho Ctrl+Alt+H e snippet "doxyf" (comentário de função com \\param e \\return)');
     await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     await vscode.workspace.fs.delete(vazio);
+
+    // Projeto final com a raylib.
+    const jogo = vscode.Uri.joinPath(pasta, 'jogo_teste.c');
+    await vscode.workspace.fs.writeFile(jogo, Buffer.from('#include "raylib.h"\n\nint main(void)\n{\n    InitWindow(800, 450, "Jogo");\n    CloseWindow();\n    return 0;\n}\n', 'utf8'));
+    const docJogo = await vscode.workspace.openTextDocument(jogo);
+    await vscode.window.showTextDocument(docJogo);
+    assert.ok(comandos.includes('tutorSocratico.rodarJogo') || (await vscode.commands.getCommands(true)).includes('tutorSocratico.rodarJogo'));
+    assert.strictEqual(await vscode.commands.executeCommand('tutorSocratico.rodarTestes', jogo), undefined, 'casos de teste não rodam em jogo');
+    const comRaylib = await prontidao.conferir();
+    const itemRaylib = comRaylib.find(i => i.id === 'raylib');
+    assert.ok(itemRaylib && (itemRaylib.situacao === 'ok' || itemRaylib.situacao === 'erro'), JSON.stringify(comRaylib));
+    if (itemRaylib!.situacao === 'erro') {
+        // Sem a raylib instalada (como neste computador): o erro do GCC vem explicado.
+        await vscode.commands.executeCommand('tutorSocratico.verificarArquivo');
+        const semRaylib = await aguardar(() => vscode.languages.getDiagnostics(jogo).find(d => d.source === 'gcc'));
+        assert.ok(semRaylib.message.includes('não encontrou a raylib'), semRaylib.message);
+    }
+    ok(`jogo com raylib: sem casos de teste, item "raylib" no "Tudo pronto?" (${itemRaylib!.situacao}) e erro do GCC explicado`);
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.workspace.fs.delete(jogo);
+
+    // Projeto do jogo: plano por pasta, etapas que o tutor monta e o aluno marca.
+    const { projetos } = extensao!.exports as { projetos: import('../../projeto').ProjetosDeJogo };
+    const arquivoDoJogo = vscode.Uri.joinPath(pasta, 'meu_jogo.c');
+    const outroArquivo = vscode.Uri.joinPath(pasta, 'inimigos.c');
+    await vscode.workspace.fs.writeFile(arquivoDoJogo, Buffer.from('int main(void)\n{\n    return 0;\n}\n', 'utf8'));
+    await vscode.window.showTextDocument(arquivoDoJogo);
+    assert.strictEqual(projetos.doArquivo(arquivoDoJogo), undefined, 'sem projeto antes de começar');
+    await vscode.commands.executeCommand('tutorSocratico.comecarJogo', arquivoDoJogo);
+    await projetos.salvarPlano(arquivoDoJogo, 'Nave que desvia de asteroides');
+    await projetos.definirEtapas(arquivoDoJogo, [{ texto: 'Janela', feita: false }, { texto: 'Mover a nave', feita: false }]);
+    await projetos.marcarEtapa(arquivoDoJogo, 0, true);
+    const doOutro = projetos.doArquivo(outroArquivo);
+    assert.strictEqual(doOutro?.plano, 'Nave que desvia de asteroides', 'o plano vale para todos os .c da pasta');
+    assert.deepStrictEqual(doOutro!.etapas.map(e => e.feita), [true, false]);
+    await projetos.definirEtapas(arquivoDoJogo, [{ texto: 'janela', feita: false }, { texto: 'Asteroides', feita: false }]);
+    assert.deepStrictEqual(projetos.doArquivo(arquivoDoJogo)!.etapas.map(e => [e.texto, e.feita]), [['janela', true], ['Asteroides', false]]);
+    await vscode.commands.executeCommand('tutorSocratico.encerrarJogo', arquivoDoJogo);
+    assert.strictEqual(projetos.doArquivo(arquivoDoJogo), undefined);
+    for (const id of ['tutorSocratico.planejarJogo', 'tutorSocratico.proximaEtapa']) {
+        assert.ok((await vscode.commands.getCommands(true)).includes(id), id);
+    }
+    ok('projeto do jogo: plano por pasta, etapas marcadas (mantidas ao refazer) e volta ao modo exercício');
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await vscode.workspace.fs.delete(arquivoDoJogo);
+
+    // Makefile do projeto: linha de comando com espaços ("missing separator") e a lâmpada que troca por TAB.
+    assert.ok((await vscode.commands.getCommands(true)).includes('tutorSocratico.compilarComMake'));
+    const arquivoMake = vscode.Uri.joinPath(pasta, 'Makefile');
+    await vscode.workspace.fs.writeFile(arquivoMake, Buffer.from('jogo.exe: main.o\n    gcc main.o -o jogo.exe\n\nclean:\n\trm -f jogo.exe\n', 'utf8'));
+    const docMake = await vscode.workspace.openTextDocument(arquivoMake);
+    const editorMake = await vscode.window.showTextDocument(docMake);
+    assert.strictEqual(docMake.languageId, 'makefile');
+    const avisoTab = await aguardar(() => vscode.languages.getDiagnostics(arquivoMake).find(d => d.source === 'Tutor Socrático'));
+    assert.strictEqual(avisoTab.range.start.line, 1);
+    let trocar: vscode.CodeAction | undefined;
+    for (let tentativa = 0; tentativa < 10 && !trocar; tentativa++) {
+        await esperar(tentativa ? 300 : 0);
+        const acoesMake = await vscode.commands.executeCommand<vscode.CodeAction[]>('vscode.executeCodeActionProvider', arquivoMake, avisoTab.range);
+        trocar = acoesMake.find(a => a.title.includes('por TAB'));
+    }
+    assert.ok(trocar?.edit, 'lâmpada "Trocar os espaços por TAB"');
+    await vscode.workspace.applyEdit(trocar!.edit!);
+    assert.strictEqual(editorMake.document.lineAt(1).text, '\tgcc main.o -o jogo.exe');
+    await aguardar(() => vscode.languages.getDiagnostics(arquivoMake).every(d => d.source !== 'Tutor Socrático') || undefined);
+    ok('Makefile: aviso de "missing separator" e a lâmpada troca os espaços por TAB');
+    await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
+    await vscode.workspace.fs.delete(arquivoMake);
 
     console.log('\n' + resultados.join('\n') + '\n\nIntegração: todos os testes passaram.');
 }

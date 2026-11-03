@@ -7,7 +7,7 @@
 import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 
-export type IdDaPendencia = 'ia' | 'conta' | 'permissao' | 'pasta' | 'gcc';
+export type IdDaPendencia = 'ia' | 'conta' | 'permissao' | 'pasta' | 'gcc' | 'raylib';
 export type Situacao = 'ok' | 'aviso' | 'erro' | 'conferindo';
 
 export interface ItemDeProntidao {
@@ -27,12 +27,17 @@ const ID_DO_GUIA = 'primeirosPassos';
 export class Prontidao implements vscode.Disposable {
     private itens: ItemDeProntidao[] = [];
     private gccOk?: boolean;
+    private raylibOk?: boolean;
     private atraso?: NodeJS.Timeout;
     private readonly mudou = new vscode.EventEmitter<ItemDeProntidao[]>();
     readonly onDidChange = this.mudou.event;
     private readonly assinaturas: vscode.Disposable[] = [];
 
-    constructor(private readonly contexto: vscode.ExtensionContext) {
+    constructor(
+        private readonly contexto: vscode.ExtensionContext,
+        // Há um arquivo com a raylib aberto: só então o item da raylib aparece.
+        private readonly usaRaylib: () => boolean = () => false,
+    ) {
         const reconferir = () => this.conferirComAtraso();
         this.assinaturas.push(
             this.mudou,
@@ -41,10 +46,11 @@ export class Prontidao implements vscode.Disposable {
             vscode.workspace.onDidGrantWorkspaceTrust(reconferir),
             vscode.extensions.onDidChange(reconferir),
             vscode.workspace.onDidChangeConfiguration(evento => {
-                if (evento.affectsConfiguration('tutorSocratico.caminhoGcc')) {
+                if (evento.affectsConfiguration('tutorSocratico.caminhoGcc') || evento.affectsConfiguration('tutorSocratico.argumentosGcc')) {
                     this.gccOk = undefined;
+                    this.raylibOk = undefined;
                 }
-                if (evento.affectsConfiguration('chat') || evento.affectsConfiguration('tutorSocratico.caminhoGcc')) {
+                if (evento.affectsConfiguration('chat') || evento.affectsConfiguration('tutorSocratico.caminhoGcc') || evento.affectsConfiguration('tutorSocratico.argumentosGcc')) {
                     reconferir();
                 }
             }),
@@ -76,6 +82,9 @@ export class Prontidao implements vscode.Disposable {
             this.itemPasta(),
             await this.itemGcc(),
         ];
+        if (this.usaRaylib()) {
+            itens.push(await this.itemRaylib(itens[itens.length - 1].situacao === 'ok'));
+        }
         this.itens = itens;
         const ok = (id: IdDaPendencia) => itens.find(i => i.id === id)!.situacao === 'ok';
         // Usados para marcar os passos do guia como concluídos.
@@ -109,6 +118,10 @@ export class Prontidao implements vscode.Disposable {
                 return;
             case 'gcc':
                 await this.abrirGuia('gcc');
+                return;
+            case 'raylib':
+                this.raylibOk = undefined;
+                await this.abrirGuia('raylib');
                 return;
         }
     }
@@ -218,6 +231,19 @@ export class Prontidao implements vscode.Disposable {
             : { id: 'pasta', situacao: 'erro', titulo: 'Pasta em modo restrito', detalhe: 'O tutor conversa, mas não compila nem testa o programa até você confiar na pasta dos seus exercícios.', botao: 'Confiar nesta pasta' };
     }
 
+    private async itemRaylib(gccOk: boolean): Promise<ItemDeProntidao> {
+        if (!gccOk) {
+            return { id: 'raylib', situacao: 'aviso', titulo: 'raylib', detalhe: 'Instale o GCC primeiro.' };
+        }
+        if (this.raylibOk === undefined) {
+            const configuracao = vscode.workspace.getConfiguration('tutorSocratico');
+            this.raylibOk = await gccEncontraRaylib(configuracao.get<string>('caminhoGcc', 'gcc'), configuracao.get<string[]>('argumentosGcc', []));
+        }
+        return this.raylibOk
+            ? { id: 'raylib', situacao: 'ok', titulo: 'raylib encontrada (projeto do jogo)' }
+            : { id: 'raylib', situacao: 'erro', titulo: 'raylib não encontrada', detalhe: 'O seu arquivo usa a raylib, mas o GCC não a encontra. Sem ela, o jogo não compila.', botao: 'Como instalar a raylib' };
+    }
+
     private async itemGcc(): Promise<ItemDeProntidao> {
         if (this.gccOk === undefined) {
             const caminho = vscode.workspace.getConfiguration('tutorSocratico').get<string>('caminhoGcc', 'gcc');
@@ -228,6 +254,14 @@ export class Prontidao implements vscode.Disposable {
             ? { id: 'gcc', situacao: 'ok', titulo: 'GCC encontrado' }
             : { id: 'gcc', situacao: 'erro', titulo: 'GCC não encontrado', detalhe: 'Sem o GCC, o tutor não verifica erros de compilação nem roda os testes. O chat funciona.', botao: 'Como instalar o GCC' };
     }
+}
+
+/** O GCC encontra o raylib.h? (compila um programa mínimo, sem gerar arquivo) */
+function gccEncontraRaylib(caminhoGcc: string, argumentos: string[]): Promise<boolean> {
+    return new Promise(resolve => {
+        const processo = execFile(caminhoGcc, ['-fsyntax-only', ...argumentos, '-x', 'c', '-'], { timeout: 8000, windowsHide: true }, erro => resolve(!erro));
+        processo.stdin?.end('#include <raylib.h>\nint main(void) { InitWindow(10, 10, "x"); return 0; }\n');
+    });
 }
 
 async function modelosDisponiveis(): Promise<vscode.LanguageModelChat[]> {

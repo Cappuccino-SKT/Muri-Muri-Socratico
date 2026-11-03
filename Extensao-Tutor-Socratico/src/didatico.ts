@@ -22,6 +22,7 @@ interface Traducao {
 }
 
 const TRADUCOES: Traducao[] = [
+    { padrao: /(raylib|raymath).h: No such file or directory/, aula: 101, texto: () => 'O GCC não encontrou a raylib. Instale-a pelo MSYS2 (pacman -S mingw-w64-ucrt-x86_64-raylib) ou, se ela estiver em outra pasta, informe a pasta em tutorSocratico.argumentosGcc (ex.: -IC:/raylib/raylib/src). Veja o passo "Instalar a raylib" no guia do tutor.' },
     { padrao: /expected ';' before/, aula: 2, texto: () => 'Provavelmente faltou um ";" no fim da instrução anterior (muitas vezes, na linha de cima).' },
     { padrao: /'(\w+)' undeclared/, aula: 3, texto: m => `A variável "${m[1]}" não foi declarada. Confira se ela foi declarada antes de ser usada e se o nome está igual (o C diferencia maiúsculas de minúsculas).` },
     { padrao: /implicit declaration of function '(\w+)'/, aula: 16, texto: m => `A função "${m[1]}" foi usada sem ser declarada antes: falta o #include da biblioteca dela (ex.: stdio.h, string.h, math.h, stdlib.h) ou o protótipo da sua função antes da main. Confira também se o nome está escrito certo.` },

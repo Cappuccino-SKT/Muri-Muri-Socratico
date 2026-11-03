@@ -8,12 +8,13 @@ import { normalizarSaida, resumirResultados, rodarCasos, saidaConfere } from '..
 import { aulaDoExercicio, montarCatalogo } from '../catalogo';
 import { comentarioInicial, reconhecerExercicio } from '../reconhecer';
 import { analisarCodigo, traduzirMensagemGcc } from '../didatico';
-import { carregarMaterial, selecionarAulas } from '../material';
-import { interpretarSaidaGcc, verificarComGcc } from '../gcc';
+import { carregarMaterial, ehProjetoRaylib, selecionarAulas } from '../material';
+import { bibliotecasPadraoDaRaylib, explicarErroDeCompilacaoDoJogo, interpretarSaidaGcc, verificarComGcc } from '../gcc';
 import { CRITERIOS_DE_QUALIDADE, instrucaoDoComando, montarContexto, numerarLinhas, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from '../prompt';
-import { cartaoDaNota, FiltroDoBloco, lerBloco, moverLinha, somarNota } from '../pontos';
+import { cartaoDaNota, FiltroDoBloco, juntarEtapas, lerBloco, lerEtapas, moverLinha, somarNota } from '../pontos';
 import { BRIEF_A_PREENCHER, ENUNCIADO_A_PREENCHER, montarCabecalho, montarComentarioDoEnunciado, temCabecalhoDoxygen, verificarIndentacao, verificarQualidade } from '../cabecalho';
 import { limparCodigo } from '../didatico';
+import { verificarMakefile } from '../makefile';
 
 const raiz = path.join(__dirname, '..', '..');
 const material = carregarMaterial(path.join(raiz, 'material'));
@@ -32,8 +33,10 @@ function teste(nome: string, corpo: () => void | Promise<void>) {
 const numeros = (pergunta: string, codigo = '') => selecionarAulas(material, pergunta, codigo).map(a => a.numero);
 
 (async () => {
-    await teste('carrega as 21 aulas e os índices', () => {
-        assert.strictEqual(material.aulas.length, 21);
+    await teste('carrega as 21 aulas, o material da raylib e os índices', () => {
+        assert.strictEqual(material.aulas.filter(a => a.modulo === 'aula').length, 21);
+        assert.deepStrictEqual(material.aulas.filter(a => a.modulo === 'raylib').map(a => a.numero), [101, 102, 103, 104, 105, 106, 107]);
+        assert.ok(material.indiceRaylib.includes('raylib 6.2'));
         assert.ok(material.indiceAulas.includes('Sumário das aulas'));
         assert.ok(material.indiceVideos.includes('youtube.com'));
         assert.ok(material.aulas.every(a => a.numero > 0 && a.topicos.length > 0));
@@ -494,6 +497,146 @@ int main() {
         assert.ok(porPrefixo('doxy').body.some(l => l.includes('Enunciado:')));
         assert.ok(porPrefixo('doxyf').body.some(l => l.startsWith(' * \\\\param')));
         assert.ok(porPrefixo('doxyf').body.some(l => l.startsWith(' * \\\\return')));
+    });
+
+    // Projeto final de Fundamentos 2: jogo com a raylib.
+    const jogo = '#include "raylib.h"\nint main(void) {\n    InitWindow(800, 450, "Jogo");\n    while (!WindowShouldClose()) {\n        if (IsKeyDown(KEY_RIGHT)) x++;\n    }\n}\n';
+
+    await teste('material da raylib tem as seções das aulas e cita a versão 6.2', () => {
+        for (const parte of material.aulas.filter(a => a.modulo === 'raylib')) {
+            for (const secao of ['## Objetivo', '## Conceitos-chave', '## Erros comuns e pontos de atenção', '## Perguntas socráticas sugeridas', '## Referências oficiais']) {
+                assert.ok(parte.conteudo.includes(secao), `${parte.arquivo}: ${secao}`);
+            }
+            assert.ok(parte.conteudo.includes('6.2'), parte.arquivo);
+            assert.ok(parte.titulo.startsWith('Raylib '), parte.titulo);
+        }
+    });
+
+    await teste('o material da raylib só entra no projeto com raylib', () => {
+        const numerosRaylib = (pergunta: string, codigo = '') => selecionarAulas(material, pergunta, codigo).map(a => a.numero).filter(n => n > 100);
+        assert.deepStrictEqual(numerosRaylib('como faço a soma de dois números?'), [], 'soma não puxa o material de som');
+        assert.deepStrictEqual(numerosRaylib('como fazer o jogo da velha com matriz?', 'int tabuleiro[3][3];'), []);
+        assert.deepStrictEqual(numerosRaylib('meu laço for não para', 'for (i = 0; i < 10; i++) {}'), []);
+        assert.ok(ehProjetoRaylib('', jogo) && ehProjetoRaylib('como uso a raylib?') && ehProjetoRaylib('o DrawTexture não mostra nada'));
+        assert.ok(!ehProjetoRaylib('como uso o scanf?', 'int main() {}'));
+    });
+
+    await teste('dúvidas de raylib escolhem a parte certa do material', () => {
+        const primeira = (pergunta: string, codigo = '') => selecionarAulas(material, pergunta, codigo)[0]?.numero;
+        assert.strictEqual(primeira('o personagem anda só um passo quando aperto a seta, IsKeyPressed', jogo), 103);
+        assert.strictEqual(primeira('deu undefined reference to InitWindow', jogo), 101);
+        assert.strictEqual(primeira('como carregar uma textura png e fazer animacao do sprite?', jogo), 105);
+        assert.strictEqual(primeira('como testar colisao entre o jogador e o inimigo com CheckCollisionRecs?', jogo), 104);
+        assert.strictEqual(primeira('como faço o menu e o game over com enum?', jogo), 106);
+        assert.ok(selecionarAulas(material, 'como mostrar o texto da pontuação na tela?', jogo).some(a => a.numero === 102));
+        assert.ok(selecionarAulas(material, 'o que é isso?', jogo).some(a => a.numero === 101), 'qualquer dúvida no jogo traz os primeiros passos');
+    });
+
+    await teste('contexto do projeto com raylib: regras e índice só quando for o caso', () => {
+        const comRaylib = montarContexto(material, [], { codigo: jogo, projetoRaylib: true });
+        assert.ok(comRaylib.includes('## PROJETO FINAL COM A RAYLIB'));
+        assert.ok(comRaylib.includes('LÓGICA DO JOGO') && comRaylib.includes('raylib 6.2'));
+        assert.ok(comRaylib.includes('Índice do material da raylib'));
+        assert.ok(!montarContexto(material, [], { codigo: 'int main() {}' }).includes('RAYLIB'));
+    });
+
+    await teste('erros ao compilar o jogo são explicados', () => {
+        assert.ok(explicarErroDeCompilacaoDoJogo('jogo.c:1:10: fatal error: raylib.h: No such file or directory')!.includes('não encontrou a raylib'));
+        assert.ok(explicarErroDeCompilacaoDoJogo("ld.exe: jogo.o: in function main: jogo.c:(.text+0x1a): undefined reference to `InitWindow'")!.includes('faltou ligar a raylib'));
+        assert.ok(explicarErroDeCompilacaoDoJogo("undefined reference to `moverJogador'")!.includes('compilado junto'));
+        assert.ok(explicarErroDeCompilacaoDoJogo('ld.exe: cannot find -lraylib')!.includes('arquivo da biblioteca'));
+        assert.ok(explicarErroDeCompilacaoDoJogo('ld.exe: cannot open output file jogo.exe: Permission denied')!.includes('Feche a janela do jogo'));
+        assert.strictEqual(explicarErroDeCompilacaoDoJogo('jogo.c:5:3: error: expected \';\' before \'}\' token'), undefined);
+        assert.deepStrictEqual(bibliotecasPadraoDaRaylib('win32'), ['-lraylib', '-lopengl32', '-lgdi32', '-lwinmm']);
+        assert.deepStrictEqual(bibliotecasPadraoDaRaylib('linux'), ['-lraylib', '-lm']);
+        assert.ok(traduzirMensagemGcc('raylib.h: No such file or directory')!.texto.includes('MSYS2'));
+    });
+
+    // Compilação manual e Makefile (requisito do projeto final).
+    await teste('Makefile: aponta só as linhas de comando que começam com espaços', () => {
+        const makefile = [
+            'CC = gcc',
+            'CFLAGS = -IC:/raylib/src',
+            'jogo.exe: main.o',
+            '    gcc main.o -o jogo.exe',
+            '\t$(CC) ok',
+            '%.o: %.c',
+            '\t$(CC) -c $< \\',
+            '    -o $@',
+            'ifeq ($(shell echo %OS%),Windows_NT)',
+            '    RM = del /Q',
+            'endif',
+            'clean:',
+            '  rm -f x',
+            'X := a:b',
+            '    continua sem regra',
+        ].join('\n');
+        assert.deepStrictEqual(verificarMakefile(makefile).map(p => [p.linha, p.espacos]), [[4, 4], [13, 2]]);
+        assert.ok(verificarMakefile(makefile)[0].mensagem.includes('missing separator'));
+        const modelo = fs.readFileSync(path.join(raiz, 'material', 'raylib', 'Raylib_07_Compilacao_e_Makefile.md'), 'utf8')
+            .match(/```makefile\r?\n([\s\S]*?)```/)![1].replace(/^  /gm, '');
+        assert.deepStrictEqual(verificarMakefile(modelo), [], 'o Makefile modelo do material não tem problemas');
+        assert.strictEqual(modelo.split('\n').filter(l => l.startsWith('\t')).length, 4, 'as 4 linhas de comando do modelo começam com TAB');
+    });
+
+    await teste('dúvidas de compilação e Makefile escolhem o material Raylib 7', () => {
+        const primeira = (pergunta: string, codigo = '') => selecionarAulas(material, pergunta, codigo)[0]?.numero;
+        assert.strictEqual(primeira('como faço o makefile do meu projeto?'), 107);
+        assert.strictEqual(primeira('deu missing separator no make'), 107);
+        assert.strictEqual(primeira('o que faz o gcc -c no terminal?', jogo), 107);
+        assert.ok(ehProjetoRaylib('No rule to make target jogador.c') && ehProjetoRaylib('uso mingw32-make?'));
+        assert.ok(!ehProjetoRaylib('como faço para o programa somar?'));
+    });
+
+    await teste('o tutor recebe o Makefile do projeto, com os TABs visíveis, e a regra de ajuda', () => {
+        const contexto = montarContexto(material, [], { codigo: jogo, projetoRaylib: true, makefile: { nome: 'Makefile', texto: 'all: jogo.exe\n\tgcc main.c -o jogo.exe\n    gcc errado' } });
+        assert.ok(contexto.includes('## MAKEFILE DO PROJETO (Makefile;'));
+        assert.ok(contexto.includes('  2| →   gcc main.c') && contexto.includes('  3|     gcc errado'), 'TAB aparece como seta, espaços continuam espaços');
+        assert.ok(contexto.includes('MODELO GENÉRICO') && contexto.includes('tarefa do aluno'));
+    });
+
+    // Projeto do jogo: plano escrito pelo aluno e etapas de desenvolvimento.
+    const respostaComEtapas = 'Ótimo plano! Vamos por etapas:\n1. Janela...\n<!--ETAPAS\n- [ ] Abrir a janela e o laço do jogo\n2. Mover a nave com as setas\nTiros com a barra de espaço\n\n-->\n';
+
+    await teste('bloco ETAPAS é tirado do texto e vira a lista de etapas', () => {
+        for (let tamanho = 1; tamanho <= 9; tamanho++) {
+            const filtro = new FiltroDoBloco();
+            let visivel = '';
+            for (let i = 0; i < respostaComEtapas.length; i += tamanho) {
+                visivel += filtro.empurrar(respostaComEtapas.slice(i, i + tamanho));
+            }
+            const fim = filtro.terminar();
+            assert.strictEqual(visivel + fim.resto, 'Ótimo plano! Vamos por etapas:\n1. Janela...\n', `pedaços de ${tamanho}`);
+            assert.strictEqual(fim.bloco, undefined, 'ETAPAS não é bloco de PONTOS');
+            assert.deepStrictEqual(fim.etapas!.map(e => e.texto), ['Abrir a janela e o laço do jogo', 'Mover a nave com as setas', 'Tiros com a barra de espaço']);
+        }
+        assert.strictEqual(lerEtapas(Array.from({ length: 20 }, (_, i) => `etapa ${i}`).join('\n')).length, 12, 'no máximo 12 etapas');
+    });
+
+    await teste('refazer as etapas mantém marcadas as que já estavam feitas', () => {
+        const antigas = [{ texto: 'Abrir a janela', feita: true }, { texto: 'Mover o jogador', feita: false }];
+        const novas = lerEtapas('abrir a janela\nMover o jogador com WASD\nColisões');
+        assert.deepStrictEqual(juntarEtapas(antigas, novas).map(e => e.feita), [true, false, false]);
+    });
+
+    await teste('/plano e /passo: etapas pequenas, sem escrever o código do jogo', () => {
+        const plano = instrucaoDoComando('plano')!;
+        assert.ok(plano.includes('<!--ETAPAS') && plano.includes('versão mínima jogável') && plano.includes('Não escreva o código do jogo'));
+        const passo = instrucaoDoComando('passo')!;
+        assert.ok(passo.includes('ETAPA ATUAL') && passo.includes('Não escreva o código da etapa'));
+    });
+
+    await teste('contexto do jogo: o plano faz o papel do enunciado e a etapa atual fica marcada', () => {
+        const contexto = montarContexto(material, [], {
+            codigo: jogo, projetoRaylib: true,
+            jogo: { plano: 'Nave que desvia de asteroides', etapas: [{ texto: 'Janela', feita: true }, { texto: 'Mover a nave', feita: false }, { texto: 'Asteroides', feita: false }] },
+        });
+        assert.ok(contexto.includes('## PLANO DO JOGO') && contexto.includes('Nave que desvia de asteroides'));
+        assert.ok(contexto.includes('✅ 1. Janela') && contexto.includes('⬜ 2. Mover a nave  ← ETAPA ATUAL') && !contexto.includes('3. Asteroides  ←'));
+        assert.ok(!contexto.includes('EXERCÍCIO NÃO INFORMADO'), 'no jogo não se deduz exercício');
+        assert.ok(contexto.includes('PLANO DO JOGO: se houver'));
+        const semPlano = montarContexto(material, [], { codigo: jogo, projetoRaylib: true, jogo: { plano: '', etapas: [] } });
+        assert.ok(semPlano.includes('ainda não escreveu o plano') && !semPlano.includes('## ETAPAS DO DESENVOLVIMENTO'));
     });
 
     console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) falharam.`);

@@ -1,5 +1,17 @@
 # Histórico de versões
 
+## 0.9.0
+- **Projeto final de Fundamentos 2 (jogo com a raylib 6.2):** material novo em 6 partes (instalar e compilar, desenho e texto, teclado e mouse, movimento e colisões, imagens e sons, organização do jogo), com as funções conferidas no `raylib.h` oficial. O material só entra quando o arquivo usa a raylib ou a pergunta fala dela.
+- O tutor pode mostrar como usar a biblioteca; a lógica do jogo continua com perguntas e pistas.
+- **▶ Compilar e rodar o jogo** (painel, menu do editor e paleta de comandos): compila ligando a raylib, junta os outros `.c` da pasta sem `main`, roda o jogo na pasta do arquivo e explica os erros mais comuns.
+- Arquivos com raylib: o GCC explica "raylib.h não encontrado", os casos de teste ficam escondidos e o **🩺 Tudo pronto?** confere se a raylib está instalada.
+- Novas configurações `tutorSocratico.argumentosGcc` e `tutorSocratico.bibliotecasRaylib` (bloqueadas em pasta não confiável).
+- Guia: passo 8, **Instalar e usar a raylib**.
+- **🎮 Meu jogo**: nos arquivos do jogo, o painel troca a caixa do exercício pelo **plano do jogo**, escrito pelo aluno e guardado por pasta. O tutor usa o plano como base de toda ajuda. **🧭 Montar as etapas** (`/plano`) divide o plano em etapas, que viram uma lista para marcar no painel; **➡️ Me ajude com a próxima etapa** (`/passo`) guia a etapa atual. Para começar antes de usar a raylib: **🎮 Começar o projeto do jogo nesta pasta**.
+- Todos os botões do painel agora têm cor de fundo, como o **Verificar meu código**: antes, os secundários e os de link se confundiam com o texto em vários temas.
+- **Compilação manual e Makefile** (requisito do projeto): parte 7 do material, com as etapas da compilação, as opções do GCC e um Makefile modelo testado no PowerShell e no bash. O tutor explica e revisa o Makefile da pasta; adaptá-lo ao projeto fica com o aluno.
+- Aviso no Makefile para linha de comando com espaços em vez de TAB ("missing separator"), com a lâmpada que troca por TAB. **🛠 Compilar com o Makefile** roda o `make` (`mingw32-make` no Windows) num terminal na pasta do projeto. Nova configuração `tutorSocratico.comandoMake`.
+
 ## 0.8.0
 - **Computadores da universidade:** a extensão agora funciona em pasta em modo restrito (antes, o VS Code a desligava inteira). Nesse modo, o chat, o painel e as dicas funcionam; para compilar e testar, o painel mostra o botão **Confiar nesta pasta**.
 - Nova seção **🩺 Tudo pronto?** no painel: confere recursos de IA, conta do Copilot, permissão para o tutor usar a IA, pasta e GCC, com o botão que resolve cada pendência. Um aviso vermelho no topo do painel aparece quando algo impede o tutor de usar a IA, e um aviso aparece ao abrir o VS Code.

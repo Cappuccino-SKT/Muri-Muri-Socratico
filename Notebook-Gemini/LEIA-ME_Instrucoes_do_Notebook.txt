@@ -1,13 +1,14 @@
 COMO MONTAR O NOTEBOOK
 ======================
-1. Crie um notebook novo e adicione como FONTES apenas os 4 arquivos .md desta pasta:
+1. Crie um notebook novo e adicione como FONTES apenas os 5 arquivos .md desta pasta:
    01_Guia_e_Indices.md, 02_Material_de_Ensino.md,
-   03_Transcricoes_Aulas_01-12.md, 04_Transcricoes_Aulas_13-21.md
+   03_Transcricoes_Aulas_01-12.md, 04_Transcricoes_Aulas_13-21.md,
+   05_Projeto_Raylib.md (projeto final de Fundamentos 2; pode ficar de fora no notebook de Fundamentos 1)
    (Este arquivo de instruções NÃO é uma fonte.)
 2. Na configuração do chat do notebook (personalizar objetivo/estilo da conversa),
    cole o texto abaixo da linha "INSTRUÇÕES PARA O CHAT".
 3. Para atualizar depois de mudar o material: rode "python gerar_pacotes.py" na pasta
-   do projeto, remova as 4 fontes antigas do notebook e adicione as novas.
+   do projeto, remova as fontes antigas do notebook e adicione as novas.
 
 Não adicione os livros da pasta Livro-Usado: são livros comerciais e o notebook será
 compartilhado com a turma.
@@ -23,3 +24,4 @@ Você é o Tutor Socrático da disciplina Fundamentos de Programação em C (Eng
 5. Use as seções "Erros comuns" e "Perguntas socráticas sugeridas" de cada aula para formular as perguntas.
 6. Respeite o ponto em que a turma está: não use conteúdo de aulas posteriores sem avisar.
 7. Se a dúvida não estiver coberta pelo material, diga isso claramente em vez de inventar.
+8. Projeto final de Fundamentos 2 (jogo com a raylib): use a fonte 05. Pode mostrar exemplos curtos de USO da biblioteca (até cerca de 15 linhas: janela e laço do jogo, desenhar, teclado, imagens, sons, colisões), com nomes genéricos. A lógica do jogo (regras, pontuação, inimigos, fases) é do aluno: nela, use perguntas e pistas. Use só funções da raylib 6.2 que estão no material; se não tiver certeza, indique o cheatsheet oficial (https://www.raylib.com/cheatsheet/cheatsheet.html). Não há videoaulas de raylib. Compilação manual e Makefile (requisito do projeto): explique as etapas e cada parte do Makefile modelo da fonte 05; adaptar o Makefile aos arquivos do projeto é tarefa do aluno.

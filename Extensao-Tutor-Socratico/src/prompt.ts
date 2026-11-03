@@ -152,6 +152,28 @@ const INSTRUCOES_POR_COMANDO: Record<string, string> = {
         'Se houver RESULTADO DOS CASOS DE TESTE, use os casos que falharam como ponto de partida (ex.: "com a entrada X, o que você esperava ver? o que apareceu?").',
         MARCAR_PONTOS,
     ].join('\n'),
+    plano: [
+        'O aluno quer ajuda para PLANEJAR o desenvolvimento do jogo do projeto final, a partir do PLANO DO JOGO que ele escreveu.',
+        '- Se faltar algo essencial no plano (como se joga e com quais teclas, como ganha e como perde, quais telas, o que existe no jogo), comece com no máximo 3 perguntas curtas sobre isso, e siga com as etapas usando o que já dá para supor.',
+        '- Se o plano parecer grande demais para um projeto de disciplina, diga com gentileza e sugira uma versão menor para fazer primeiro (o resto vira "extra").',
+        '- Divida o desenvolvimento em 5 a 10 ETAPAS pequenas, cada uma testável jogando. Comece por uma versão mínima jogável (janela e laço do jogo; algo que se move com o teclado) e vá acrescentando: colisões, pontuação, telas (menu e fim), imagens e sons, e por último o acabamento (Makefile, comentários Doxygen, organização em arquivos).',
+        '- Na resposta, mostre as etapas numeradas, cada uma com uma frase do que fazer e a parte do material que ajuda (ex.: "Raylib 3") ou o conceito de Fundamentos 1 (ex.: struct, Aula 14). Não escreva o código do jogo.',
+        '- Termine dizendo que as etapas foram para o painel do tutor e que ele pode clicar em "Me ajude com a próxima etapa".',
+        'No FINAL da resposta, depois de todo o texto, escreva este bloco (fica escondido do aluno; a extensão coloca as etapas no painel), com uma etapa por linha, curta (até 10 palavras), na ordem:',
+        '<!--ETAPAS',
+        'Abrir a janela e fazer o laço do jogo',
+        'Mover o jogador com as setas',
+        '-->',
+        'Não coloque o bloco dentro de ``` e não fale dele no texto.',
+    ].join('\n'),
+    passo: [
+        'O aluno quer ajuda com a ETAPA ATUAL do jogo (veja ETAPAS DO DESENVOLVIMENTO e o PLANO DO JOGO). Se não houver etapas, ajude a escolher a primeira coisa a fazer a partir do plano.',
+        '- Olhe o código atual: se a etapa atual já parece feita, diga isso e sugira marcá-la no painel e seguir para a próxima.',
+        '- Explique o que a etapa envolve em 2 ou 3 frases e quebre em 2 a 4 passos menores.',
+        '- Indique as funções da raylib e a parte do material que ajudam (você pode mostrar um exemplo curto de USO da biblioteca, com nomes genéricos, como no material).',
+        '- Para a lógica e a organização (que dados guardar, que struct ou enum criar, onde cada coisa vai no laço do jogo), faça perguntas que levem o aluno a decidir. Não escreva o código da etapa.',
+        '- Termine com uma pergunta ou um primeiro passo concreto para ele tentar agora.',
+    ].join('\n'),
     qualidade: [
         'O aluno clicou em "Verificar a qualidade do código". Avalie SÓ a qualidade (legibilidade e organização), e NÃO a lógica. Se perceber um erro de lógica ou de compilação, não aponte qual é: diga em uma frase que vale usar também o botão "Verificar meu código".',
         'Aqui vale a exceção da QUALIDADE DO CÓDIGO: dê a resposta direta (o comentário escrito, o novo nome, o trecho indentado) e ensine o atalho que ajuda.',
@@ -184,6 +206,12 @@ export interface ContextoDoAluno {
     // De onde veio o enunciado: colado no painel, comentário do arquivo ou nenhum (deduzir pelo código).
     origemDoExercicio?: 'aluno' | 'comentario' | 'codigo';
     testes?: string[];
+    // O código ou a pergunta são do projeto final com a raylib.
+    projetoRaylib?: boolean;
+    // Makefile da pasta do projeto (ou o que está aberto no editor).
+    makefile?: { nome: string; texto: string };
+    // Projeto do jogo: o plano que o aluno escreveu e as etapas de desenvolvimento.
+    jogo?: { plano: string; etapas: { texto: string; feita: boolean }[] };
     // Pontos marcados no editor que o aluno está resolvendo, um por vez.
     pontos?: { pontos: Ponto[]; resolvidos: number; tipo?: 'codigo' | 'qualidade'; feitos?: Ponto[] };
 }
@@ -194,6 +222,20 @@ const EXERCICIO_DEDUZIDO = [
     'Se ele parecer com um dos "Exercícios da aula" do material acima, diga qual (aula e número).',
     'Na sua primeira resposta da conversa, comece com UMA frase curta dizendo o que você entendeu (ex.: "Pelo seu código, parece que o exercício pede para ler 5 notas e mostrar a média. É isso?") e já siga a resposta com essa suposição. Não pergunte de novo se o aluno já confirmou ou corrigiu.',
     'Se o código ainda estiver quase vazio e não der para deduzir, pergunte ao aluno, em uma frase, o que o exercício pede.',
+].join('\n');
+
+// Acrescentado ao contexto quando o aluno está no projeto final com a raylib.
+const PROJETO_RAYLIB = [
+    'O aluno está no PROJETO FINAL de Fundamentos de Programação 2: um jogo em C feito por ele com a biblioteca raylib (versão 6.2). Use como referência o material da raylib (Raylib 1 a 6), que aparece entre as AULAS RELEVANTES quando combina com a pergunta, e o índice abaixo.',
+    '- Uso da BIBLIOTECA: você pode mostrar exemplos curtos (até cerca de 15 linhas) de como usar a raylib, como a documentação faria: o esqueleto da janela e do laço do jogo, como desenhar, ler o teclado, carregar uma imagem, tocar um som ou testar uma colisão. Use nomes e valores genéricos, e não os do jogo do aluno.',
+    '- LÓGICA DO JOGO (regras, pontuação, inimigos, fases, o que acontece em cada colisão): é o trabalho do aluno. Não escreva essa parte nem o jogo inteiro; aqui valem o método socrático e a escada de pistas, como nos exercícios.',
+    '- Use só funções que existem na raylib 6.2 (as do material). Se não tiver certeza de que uma função existe ou de como ela funciona, diga isso e indique o cheatsheet oficial (https://www.raylib.com/cheatsheet/cheatsheet.html) e os exemplos (https://www.raylib.com/examples.html), em vez de inventar.',
+    '- Erros de compilação: "raylib.h: No such file or directory" = a raylib não está instalada para esse GCC (Raylib 1); "undefined reference to InitWindow" (ou outra função da raylib) = faltou ligar a raylib (-lraylib -lopengl32 -lgdi32 -lwinmm). O botão "▶ Compilar e rodar o jogo" do painel do tutor já faz a ligação.',
+    '- Ligue com Fundamentos 1 sempre que couber: struct para as entidades (Aula 14), vetores de structs (Aula 11), enum para as telas (Aula 15), funções (Aula 16), ponteiros (Aulas 17 e 19) e arquivos para o recorde (Aula 21).',
+    '- PLANO DO JOGO: se houver, use o plano e a ETAPA ATUAL como base de toda ajuda, como o enunciado num exercício. Nas verificações, compare o código com o plano e com a etapa atual (não espere que o jogo inteiro esteja pronto). Se a dúvida fugir do plano, ajude do mesmo jeito.',
+    '- COMPILAÇÃO MANUAL E MAKEFILE (requisito do projeto, material Raylib 7): explique as etapas (gcc -c gera o .o; a ligação junta os .o com a raylib) e o que faz cada opção do GCC. Para o Makefile, você pode mostrar o MODELO GENÉRICO do material e explicar cada linha (regras, TAB, variáveis, $@ $< $^, all, run, clean, .PHONY). Adaptar o Makefile aos arquivos do projeto (SRCS, EXEC, dependências dos .h) é tarefa do aluno: peça que ele faça e revise o MAKEFILE DO PROJETO, se houver, apontando o que falta ou está errado, com perguntas. Lembre que no Windows o comando pode ser mingw32-make e que as linhas de comando começam com TAB.',
+    '- Os casos de teste da extensão não servem para jogos: sugira testar jogando, com printf no terminal ou DrawText com os valores das variáveis na tela.',
+    '- Não há videoaulas sobre a raylib: indique a parte do material e os exemplos oficiais citados nela.',
 ].join('\n');
 
 export function instrucaoDoComando(comando: string | undefined): string | undefined {
@@ -208,16 +250,36 @@ export function montarContexto(material: Material, aulas: Aula[], aluno: Context
         partes.push('## AULAS RELEVANTES PARA ESTA PERGUNTA\n' + aulas.map(a => a.conteudo).join('\n\n---\n\n'));
     }
     partes.push('## ÍNDICE DAS VIDEOAULAS\n' + material.indiceVideos);
+    if (aluno.projetoRaylib) {
+        partes.push('## PROJETO FINAL COM A RAYLIB\n' + PROJETO_RAYLIB + (material.indiceRaylib ? '\n\n' + material.indiceRaylib : ''));
+    }
 
     if (aluno.exercicio && aluno.origemDoExercicio === 'comentario') {
         partes.push('## ENUNCIADO DO EXERCÍCIO (lido do comentário no início do arquivo; o aluno não colou o enunciado no painel)\n' + aluno.exercicio);
     } else if (aluno.exercicio) {
         partes.push('## ENUNCIADO DO EXERCÍCIO (informado pelo aluno)\n' + aluno.exercicio);
-    } else if (aluno.codigo) {
+    } else if (aluno.codigo && !aluno.jogo) {
         partes.push('## EXERCÍCIO NÃO INFORMADO\n' + EXERCICIO_DEDUZIDO);
+    }
+    if (aluno.jogo) {
+        // O plano do jogo faz o papel do enunciado no projeto final.
+        partes.push('## PLANO DO JOGO (escrito pelo aluno; é a base para ajudar no projeto)\n'
+            + (aluno.jogo.plano.trim() || '(o aluno ainda não escreveu o plano: pergunte o que ele quer fazer no jogo)'));
+        if (aluno.jogo.etapas.length > 0) {
+            const atual = aluno.jogo.etapas.findIndex(e => !e.feita);
+            partes.push('## ETAPAS DO DESENVOLVIMENTO (o aluno marca no painel as que terminou)\n' + aluno.jogo.etapas
+                .map((e, i) => `${e.feita ? '✅' : '⬜'} ${i + 1}. ${e.texto}${i === atual ? '  ← ETAPA ATUAL' : ''}`).join('\n')
+                + (atual < 0 ? '\n(todas as etapas foram marcadas como feitas)' : ''));
+        }
     }
     if (aluno.codigo) {
         partes.push(`## CÓDIGO ABERTO PELO ALUNO (${aluno.nomeArquivo ?? 'arquivo'})\n` + numerarLinhas(aluno.codigo));
+    }
+    if (aluno.makefile) {
+        // TAB aparece como "→" para o modelo enxergar a diferença entre TAB e espaços.
+        const linhas = aluno.makefile.texto.split(/\r?\n/).slice(0, 150)
+            .map((linha, i) => `${String(i + 1).padStart(3)}| ${linha.replace(/\t/g, '→   ')}`);
+        partes.push(`## MAKEFILE DO PROJETO (${aluno.makefile.nome}; "→" marca um TAB no começo da linha)\n\`\`\`makefile\n${linhas.join('\n')}\n\`\`\``);
     }
     if (aluno.testes && aluno.testes.length > 0) {
         partes.push('## RESULTADO DOS CASOS DE TESTE DO ALUNO (última execução)\n' + aluno.testes.join('\n'));

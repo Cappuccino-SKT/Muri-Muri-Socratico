@@ -8,7 +8,8 @@ Material e ferramentas para um tutor de IA da disciplina **Fundamentos de Progra
 |---|---|
 | `Material-Ensino-Verificado/` | As 21 aulas convertidas dos slides para Markdown, revisadas tecnicamente, com erros comuns, perguntas socráticas e notas de revisão. `_INDICE.md` resume tudo. |
 | `Transcrição-Verificadas/` | Transcrições revisadas das videoaulas e `_INDICE_VIDEOAULAS.md` (tópico → vídeo → link). |
-| `Notebook-Gemini/` | O material juntado em 4 arquivos para o Gemini Notebook (NotebookLM) e as instruções do chat. |
+| `Material-Raylib/` | Material do projeto final de Fundamentos 2 (jogo com a raylib 6.2), em 7 partes no formato das aulas: instalar e compilar, desenho e texto, teclado e mouse, movimento e colisões, imagens e sons, organização do jogo, compilação manual e Makefile. Funções conferidas no `raylib.h` oficial. |
+| `Notebook-Gemini/` | O material juntado em 5 arquivos para o Gemini Notebook (NotebookLM) e as instruções do chat. |
 | `Extensao-Tutor-Socratico/` | Extensão do VS Code: chat `@tutor` (via GitHub Copilot), dicas offline e de qualidade do código, casos de teste e reconhecimento do exercício pelo enunciado ou pelo código. Veja o README dela. |
 | `Extensao-Tutor-Socratico/guia/` | [Guia de primeiros passos](Extensao-Tutor-Socratico/guia/README.md) para o aluno: conta no GitHub, Copilot, permissões e GCC. |
 | `Tutor-VSCode/` | Protótipo anterior, sem extensão: uma pasta modelo com um agente do Copilot. |

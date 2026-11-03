@@ -9,5 +9,6 @@ Do zero até o tutor funcionando, para quem nunca usou o GitHub. Esse mesmo guia
 5. [Confiar na pasta dos exercícios](5-pasta.md)
 6. [Conferir o GCC](6-gcc.md)
 7. [Usar o tutor](7-usar.md)
+8. [(Fundamentos 2) Instalar e usar a raylib](8-raylib.md)
 
 **Algo não funciona?** No painel do tutor, abra **🩺 Tudo pronto?**: ali aparece o que falta neste computador e o botão que resolve.

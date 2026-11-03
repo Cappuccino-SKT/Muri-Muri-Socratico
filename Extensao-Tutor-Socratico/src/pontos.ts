@@ -60,14 +60,23 @@ export function cartaoDaNota(criterios: Criterio[], anterior?: number): string {
     ].join('\n');
 }
 
-const INICIO_DO_BLOCO = /<!--\s*PONTOS/i;
-const PREFIXO_DO_BLOCO = '<!--pontos';
+// Dois blocos escondidos: PONTOS (linhas para marcar no editor) e ETAPAS
+// (etapas de desenvolvimento do projeto do jogo).
+const INICIO_DO_BLOCO = /<!--\s*(PONTOS|ETAPAS)/i;
+const PREFIXOS_DO_BLOCO = ['<!--pontos', '<!--etapas'];
 const MAX_PONTOS = 8;
+const MAX_ETAPAS = 12;
+
+export interface Etapa {
+    texto: string;
+    feita: boolean;
+}
 
 /** Separa o bloco escondido do texto que vai aparecendo no chat. */
 export class FiltroDoBloco {
     private pendente = '';
     private bloco?: string;
+    private tipo?: 'pontos' | 'etapas';
 
     /** Recebe um trecho da resposta e devolve o que pode ser mostrado ao aluno. */
     empurrar(trecho: string): string {
@@ -79,6 +88,7 @@ export class FiltroDoBloco {
         const achado = INICIO_DO_BLOCO.exec(texto);
         if (achado) {
             this.pendente = '';
+            this.tipo = achado[1].toLowerCase() === 'etapas' ? 'etapas' : 'pontos';
             this.bloco = texto.slice(achado.index + achado[0].length);
             return texto.slice(0, achado.index);
         }
@@ -87,7 +97,7 @@ export class FiltroDoBloco {
         const ultimo = texto.lastIndexOf('<');
         if (ultimo >= 0 && texto.length - ultimo < 16) {
             const fim = texto.slice(ultimo).toLowerCase().replace(/\s+/g, '');
-            if (PREFIXO_DO_BLOCO.startsWith(fim)) {
+            if (PREFIXOS_DO_BLOCO.some(prefixo => prefixo.startsWith(fim))) {
                 this.pendente = texto.slice(ultimo);
                 return texto.slice(0, ultimo);
             }
@@ -97,11 +107,31 @@ export class FiltroDoBloco {
     }
 
     /** Fim da resposta: devolve o que sobrou para mostrar e o bloco, se veio. */
-    terminar(): { resto: string; bloco?: BlocoDePontos } {
+    terminar(): { resto: string; bloco?: BlocoDePontos; etapas?: Etapa[] } {
         const resto = this.pendente;
         this.pendente = '';
-        return { resto, bloco: this.bloco === undefined ? undefined : lerBloco(this.bloco) };
+        if (this.bloco === undefined) {
+            return { resto };
+        }
+        return this.tipo === 'etapas' ? { resto, etapas: lerEtapas(this.bloco) } : { resto, bloco: lerBloco(this.bloco) };
     }
+}
+
+/** Lê as etapas do bloco ETAPAS: uma por linha ("- [ ] texto", "1. texto" ou só o texto). */
+export function lerEtapas(texto: string): Etapa[] {
+    const fim = texto.indexOf('-->');
+    const corpo = fim >= 0 ? texto.slice(0, fim) : texto;
+    return corpo.split(/\r?\n/)
+        .map(linha => linha.trim().replace(/^(?:[-*]\s*)?(?:\[[ xX]?\]\s*)?(?:\d+[.)]\s*)?/, '').trim())
+        .filter(linha => linha.length > 0)
+        .slice(0, MAX_ETAPAS)
+        .map(texto => ({ texto, feita: false }));
+}
+
+/** Etapas novas mantêm "feita" das que já existiam com o mesmo texto. */
+export function juntarEtapas(antigas: Etapa[], novas: Etapa[]): Etapa[] {
+    const feitas = new Set(antigas.filter(e => e.feita).map(e => e.texto.toLowerCase()));
+    return novas.map(e => ({ texto: e.texto, feita: e.feita || feitas.has(e.texto.toLowerCase()) }));
 }
 
 /** Lê o conteúdo do bloco: a linha "resolvido: ..." e as linhas "LINHA | PERGUNTA". */
