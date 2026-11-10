@@ -31,12 +31,13 @@ const COMANDOS_DO_PAINEL = new Set([
     'tutorSocratico.resolverPendencia', 'tutorSocratico.verificarQualidade', 'tutorSocratico.rodarJogo',
     'tutorSocratico.compilarComMake', 'tutorSocratico.ajudaMakefile',
     'tutorSocratico.comecarJogo', 'tutorSocratico.encerrarJogo', 'tutorSocratico.planejarJogo', 'tutorSocratico.proximaEtapa',
+    'tutorSocratico.salvarDiario', 'tutorSocratico.abrirDiario',
 ]);
 // Botões que valem para o arquivo mostrado no painel.
 const COMANDOS_DO_ARQUIVO = new Set([
     'tutorSocratico.irParaPonto', 'tutorSocratico.proximoPonto', 'tutorSocratico.pistaDoPonto', 'tutorSocratico.inserirCabecalho',
     'tutorSocratico.verificarQualidade', 'tutorSocratico.rodarJogo', 'tutorSocratico.compilarComMake',
-    'tutorSocratico.comecarJogo', 'tutorSocratico.encerrarJogo',
+    'tutorSocratico.comecarJogo', 'tutorSocratico.encerrarJogo', 'tutorSocratico.abrirDiario',
 ]);
 
 export interface InfoDoPainel {
@@ -102,6 +103,10 @@ export class PainelExercicio implements vscode.WebviewViewProvider {
             }
         }
         const uri = this.arquivoAtual;
+        if (this.visao) {
+            // O título da seção acompanha o modo: "Exercício" ou "Meu jogo".
+            this.visao.title = uri && this.emProjetoDeJogo(uri) ? 'Meu jogo' : 'Exercício';
+        }
         this.visao?.webview.postMessage({
             tipo: 'estado',
             uri: uri?.toString(),
@@ -255,6 +260,8 @@ function htmlDoPainel(nonce: string): string {
   .etapa input { margin-top: 3px; }
   .etapa.feita span { text-decoration: line-through; color: var(--vscode-descriptionForeground); }
   .etapa.atual span { font-weight: 600; }
+  .onde-parei { margin: 4px 0 8px; padding: 8px; border-left: 3px solid var(--vscode-textLink-foreground); background: var(--vscode-textCodeBlock-background); white-space: pre-wrap; }
+  .onde-parei b { display: block; margin-bottom: 2px; }
   .progresso { font-size: 12px; color: var(--vscode-descriptionForeground); margin: 8px 0 2px; }
   .ponto { margin-top: 10px; padding: 8px; border-left: 3px solid #f0b400; background: var(--vscode-textCodeBlock-background); }
   .ponto-titulo { font-weight: 600; }
@@ -319,12 +326,18 @@ function htmlDoPainel(nonce: string): string {
 
     <div id="blocoJogo" class="oculto">
       <label class="titulo" for="plano">🎮 Meu jogo</label>
+      <div class="onde-parei oculto" id="ondeParei"><b>📌 Onde você parou</b><span id="ondePareiTexto"></span></div>
       <p class="dica">Conte o que você planeja fazer. O tutor usa o seu plano como base para ajudar no código.</p>
       <textarea id="plano" placeholder="Ideia do jogo: ...&#10;Como se joga (teclas, mouse): ...&#10;Como ganha e como perde: ...&#10;Telas (menu, jogo, fim...): ...&#10;O que tem no jogo (jogador, inimigos, itens...): ...&#10;Extras, se der tempo: ..."></textarea>
       <div class="status" id="statusPlano"></div>
       <button class="secundario" id="planejar" data-comando="tutorSocratico.planejarJogo">🧭 Montar as etapas do desenvolvimento</button>
       <div id="etapas"></div>
       <button class="oculto" id="proximaEtapa" data-comando="tutorSocratico.proximaEtapa">➡️ Me ajude com a próxima etapa</button>
+      <div class="linha-botoes">
+        <button data-comando="tutorSocratico.salvarDiario" title="O tutor resume o que você fez e o próximo passo no projeto-do-jogo.md">💾 Salvar onde parei</button>
+        <button data-comando="tutorSocratico.abrirDiario" title="Abre o projeto-do-jogo.md desta pasta">📄 Abrir o diário</button>
+      </div>
+      <p class="dica">O projeto fica salvo no arquivo <b>projeto-do-jogo.md</b>, na pasta do jogo: leve-o junto com o código para continuar em outro computador.</p>
       <button class="link oculto" id="encerrarJogo" data-comando="tutorSocratico.encerrarJogo">Não é um jogo? Voltar ao modo exercício</button>
     </div>
     <button class="link oculto" id="cabecalho" data-comando="tutorSocratico.inserirCabecalho">📝 Colocar o cabeçalho Doxygen e o enunciado no arquivo</button>
@@ -561,6 +574,8 @@ function htmlDoPainel(nonce: string): string {
     $('blocoJogo').classList.toggle('oculto', !emJogo);
     $('secJogo').classList.toggle('oculto', emJogo);
     if (!emJogo) return;
+    $('ondeParei').classList.toggle('oculto', !jogo.ondeParei);
+    $('ondePareiTexto').textContent = jogo.ondeParei || '';
     if (mudouArquivo || document.activeElement !== $('plano')) {
       $('plano').value = jogo.plano;
       $('statusPlano').textContent = jogo.plano ? 'Salvo ✓' : '';

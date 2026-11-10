@@ -4,7 +4,7 @@ import { carregarMaterial, ehProjetoRaylib, INCLUI_RAYLIB, Material, selecionarA
 import { bibliotecasPadraoDaRaylib, compilarJogo, verificarComGcc } from './gcc';
 import { execFile, spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
-import { instrucaoDoComando, montarContexto, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from './prompt';
+import { ATUALIZAR_DIARIO, instrucaoDoComando, montarContexto, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from './prompt';
 import { Exercicios } from './exercicios';
 import { ID_PAINEL, InfoDoPainel, PainelExercicio } from './painel';
 import { CasoDeTeste, resumirResultados, ResultadoDosTestes, rodarCasos } from './testes';
@@ -15,7 +15,8 @@ import { IdDaPendencia, JUSTIFICATIVA, Prontidao } from './prontidao';
 import { comentarioInicial, reconhecerExercicio } from './reconhecer';
 import { verificarMakefile } from './makefile';
 import { ProjetosDeJogo } from './projeto';
-import { BlocoDePontos, cartaoDaNota, Etapa, FiltroDoBloco, somarNota } from './pontos';
+import { atualizacaoVazia, lerBlocoDiario, NOME_DO_DIARIO } from './diario';
+import { BlocoDePontos, cartaoDaNota, Etapa, FiltroDoBloco, pontosDoArquivo, somarNota } from './pontos';
 import { Marcacoes } from './marcacoes';
 
 const ID_PARTICIPANTE = 'tutor-socratico.tutor';
@@ -45,7 +46,12 @@ export function activate(context: vscode.ExtensionContext) {
     diagnosticosDicas = vscode.languages.createDiagnosticCollection('Tutor Socrático (dicas)');
     exercicios = new Exercicios(context.globalState);
     marcacoes = new Marcacoes(context.extensionUri);
-    prontidao = new Prontidao(context, () => vscode.workspace.textDocuments.some(d => d.languageId === 'c' && INCLUI_RAYLIB.test(d.getText())));
+    prontidao = new Prontidao(context, () => {
+        // O arquivo do painel; antes de o painel abrir, o do editor ativo.
+        const ativo = vscode.window.activeTextEditor?.document;
+        const arquivo = painel?.arquivo ?? (ativo && ativo.languageId === 'c' ? ativo.uri : undefined);
+        return !!arquivo && emProjetoDeJogo(arquivo);
+    });
     acessoAosModelos = context.languageModelAccessInformation;
     contextoGlobal = context;
     projetos = new ProjetosDeJogo(context.globalState);
@@ -112,12 +118,33 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('tutorSocratico.comecarJogo', comecarJogo),
         vscode.commands.registerCommand('tutorSocratico.encerrarJogo', async (uri?: vscode.Uri) => {
             const alvo = uri instanceof vscode.Uri ? uri : documentoCAberto()?.uri;
-            if (alvo) {
-                await projetos.encerrar(alvo);
+            const projeto = alvo && projetos.doArquivo(alvo);
+            if (!alvo || !projeto) {
+                return;
             }
+            // O arquivo guarda o plano e o diário: só apaga com a confirmação do aluno.
+            const temConteudo = projeto.plano || projeto.etapas.length || projeto.ondeParei || projeto.historico.length;
+            if (temConteudo) {
+                const escolha = await vscode.window.showWarningMessage(
+                    `Voltar ao modo exercício apaga o ${NOME_DO_DIARIO} desta pasta, com o plano, as etapas e o diário do jogo. Continuar?`,
+                    { modal: true }, 'Apagar e voltar');
+                if (escolha !== 'Apagar e voltar') {
+                    return;
+                }
+            }
+            await projetos.encerrar(alvo);
         }),
         vscode.commands.registerCommand('tutorSocratico.planejarJogo', () => abrirChat('@tutor /plano Este é o plano do meu jogo. Me ajude a dividir o desenvolvimento em etapas.', false)),
         vscode.commands.registerCommand('tutorSocratico.proximaEtapa', () => abrirChat('@tutor /passo Me ajude com a próxima etapa do meu jogo.', false)),
+        vscode.commands.registerCommand('tutorSocratico.salvarDiario', () => abrirChat('@tutor /salvar Vou parar por agora. Salve onde eu parei e qual é o próximo passo.', false)),
+        vscode.commands.registerCommand('tutorSocratico.abrirDiario', abrirDiario),
+        projetos,
+        vscode.workspace.onDidSaveTextDocument(documento => {
+            // Salvou um .c ou .h do jogo: o mapa do código no projeto-do-jogo.md é refeito (sem IA).
+            if (/\.(c|h)$/i.test(documento.fileName) && documento.uri.scheme === 'file' && projetos.doArquivo(documento.uri)) {
+                void projetos.atualizarMapa(documento.uri);
+            }
+        }),
         vscode.commands.registerCommand('tutorSocratico.compilarComMake', compilarComMake),
         vscode.commands.registerCommand('tutorSocratico.ajudaMakefile', () => abrirChat('@tutor Como faço o Makefile do meu projeto? Quero entender cada parte para montar o meu.', false)),
         vscode.commands.registerCommand('tutorSocratico.perguntar', () => abrirChat('@tutor ', true)),
@@ -127,7 +154,8 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('tutorSocratico.alternarModoAprendizado', alternarModoAprendizado),
         vscode.window.onDidChangeActiveTextEditor(editor => {
             painel.atualizar(editor);
-            if (editor && editor.document.languageId === 'c' && INCLUI_RAYLIB.test(editor.document.getText())) {
+            if (editor && editor.document.languageId === 'c') {
+                // Trocou entre jogo e exercício: o item da raylib aparece ou some.
                 prontidao.conferirComAtraso();
             }
             atualizarBarraModo(editor);
@@ -246,7 +274,15 @@ async function responder(
             testes: documento ? resumoDosTestes(documento.uri) : undefined,
             projetoRaylib,
             makefile,
-            jogo: documento && emProjetoDeJogo(documento.uri) ? { plano: projetoDoJogo?.plano ?? '', etapas: projetoDoJogo?.etapas ?? [] } : undefined,
+            jogo: documento && emProjetoDeJogo(documento.uri) ? {
+                plano: projetoDoJogo?.plano ?? '',
+                etapas: projetoDoJogo?.etapas ?? [],
+                ondeParei: projetoDoJogo?.ondeParei,
+                decisoes: projetoDoJogo?.decisoes,
+                problemas: projetoDoJogo?.problemas,
+                historico: projetoDoJogo?.historico,
+                mapa: projetos.mapaDoCodigo(documento.uri),
+            } : undefined,
             pontos: documento ? marcacoes.doArquivo(documento.uri) : undefined,
         })),
         vscode.LanguageModelChatMessage.Assistant('Entendido. Vou ajudar o aluno com perguntas e pistas, seguindo o material, sem entregar a solução.'),
@@ -256,9 +292,11 @@ async function responder(
     // Conferindo um ponto da verificação de qualidade: segue com a rubrica e a nota.
     const naQualidade = request.command === 'qualidade'
         || (request.command === 'proximo' && !!documento && marcacoes.doArquivo(documento.uri)?.tipo === 'qualidade');
-    const instrucao = request.command === 'proximo' && naQualidade
+    const instrucaoDoPedido = request.command === 'proximo' && naQualidade
         ? `${instrucaoDoComando('proximo')}\n${PROXIMO_NA_QUALIDADE}`
         : instrucaoDoComando(request.command);
+    const noJogo = !!documento && emProjetoDeJogo(documento.uri);
+    const instrucao = noJogo ? [instrucaoDoPedido, ATUALIZAR_DIARIO].filter(Boolean).join('\n\n') : instrucaoDoPedido;
     const textoDoAluno = pergunta || '(o aluno não escreveu nada além do comando)';
     mensagens.push(vscode.LanguageModelChatMessage.User(instrucao ? `[${instrucao}]\n\nAluno: ${textoDoAluno}` : `Aluno: ${textoDoAluno}`));
 
@@ -271,6 +309,7 @@ async function responder(
     const filtro = new FiltroDoBloco();
     let bloco: BlocoDePontos | undefined;
     let etapas: Etapa[] | undefined;
+    let textoDoDiario: string | undefined;
     try {
         const resposta = await request.model.sendRequest(mensagens, { justification: JUSTIFICATIVA }, token);
         for await (const trecho of resposta.text) {
@@ -284,7 +323,9 @@ async function responder(
             stream.markdown(fim.resto);
         }
         bloco = fim.bloco;
+        registrarDepuracao(request.command, fim.bruto);
         etapas = fim.etapas;
+        textoDoDiario = fim.diario;
     } catch (erro) {
         if (erro instanceof vscode.LanguageModelError && erro.code === vscode.LanguageModelError.NoPermissions().code) {
             explicarPermissao(stream);
@@ -295,6 +336,20 @@ async function responder(
         prontidao.conferirComAtraso();
         return { metadata: { comando: request.command, falhou: true } };
     }
+    if (documento && noJogo && textoDoDiario !== undefined) {
+        const atualizacao = lerBlocoDiario(textoDoDiario);
+        if (!atualizacaoVazia(atualizacao)) {
+            await projetos.comecar(documento.uri);
+            await projetos.atualizarDiario(documento.uri, atualizacao);
+            stream.markdown(`\n\n---\n💾 Anotei onde você parou no \`${NOME_DO_DIARIO}\`.`);
+            if (request.command === 'salvar') {
+                stream.button({ command: 'tutorSocratico.abrirDiario', title: '📄 Abrir o diário do projeto', arguments: [documento.uri] });
+            }
+        }
+    } else if (documento && noJogo && request.command === 'salvar') {
+        stream.markdown('\n\n---\n⚠️ Não consegui salvar desta vez. Tente de novo, ou escreva você mesmo em "Onde parei" no arquivo do projeto.');
+        stream.button({ command: 'tutorSocratico.abrirDiario', title: '📄 Abrir o diário do projeto', arguments: [documento.uri] });
+    }
     if (documento && etapas && etapas.length > 0 && request.command === 'plano') {
         await projetos.comecar(documento.uri);
         await projetos.definirEtapas(documento.uri, etapas);
@@ -303,7 +358,8 @@ async function responder(
         stream.button({ command: 'tutorSocratico.proximaEtapa', title: '➡️ Me ajude com a primeira etapa' });
     }
     if (documento && bloco && (request.command === 'verificar' || request.command === 'qualidade' || request.command === 'proximo')) {
-        marcacoes.definir(documento.uri, bloco, request.command === 'proximo', naQualidade ? 'qualidade' : 'codigo');
+        const doArquivoAberto = { ...bloco, pontos: pontosDoArquivo(bloco.pontos, path.basename(documento.fileName)) };
+        marcacoes.definir(documento.uri, doArquivoAberto, request.command === 'proximo', naQualidade ? 'qualidade' : 'codigo');
         const nota = naQualidade && bloco.criterios ? somarNota(bloco.criterios) : undefined;
         if (nota !== undefined) {
             const anterior = exercicios.notasDeQualidade(documento.uri).at(-1);
@@ -323,7 +379,21 @@ async function responder(
             }
         }
     }
-    return { metadata: { comando: request.command } };
+    return { metadata: { comando: request.command, jogo: noJogo } };
+}
+
+let saidaDeDepuracao: vscode.OutputChannel | undefined;
+
+/**
+ * Guarda na saída "Tutor Socrático: depuração" os blocos escondidos de cada
+ * resposta, para conferir quando uma marcação ou o diário não funcionarem.
+ */
+function registrarDepuracao(comando: string | undefined, bruto: string | undefined) {
+    saidaDeDepuracao ??= vscode.window.createOutputChannel('Tutor Socrático: depuração');
+    saidaDeDepuracao.appendLine(`[${new Date().toLocaleTimeString()}] /${comando ?? '(pergunta)'}: ${bruto ? 'blocos escondidos:' : 'sem blocos escondidos'}`);
+    if (bruto) {
+        saidaDeDepuracao.appendLine(bruto.trim());
+    }
 }
 
 /** A permissão para usar a IA foi recusada: explica e mostra o botão que libera. */
@@ -364,6 +434,12 @@ function historicoDaConversa(chatContext: vscode.ChatContext): vscode.LanguageMo
 function sugerirProximosPassos(resultado: vscode.ChatResult): vscode.ChatFollowup[] {
     if (resultado.metadata?.falhou) {
         return [];
+    }
+    if (resultado.metadata?.jogo) {
+        return [
+            { prompt: 'Ainda não entendi, pode me dar outra pista?', label: 'Outra pista', command: 'pista' },
+            { prompt: 'Vou parar por agora. Salve onde eu parei e qual é o próximo passo.', label: '💾 Salvar onde parei', command: 'salvar' },
+        ];
     }
     return [
         { prompt: 'Ainda não entendi, pode me dar outra pista?', label: 'Outra pista', command: 'pista' },
@@ -749,6 +825,17 @@ function emProjetoDeJogo(uri: vscode.Uri): boolean {
     }
     const documento = vscode.workspace.textDocuments.find(d => d.uri.toString() === uri.toString());
     return !!documento && INCLUI_RAYLIB.test(documento.getText());
+}
+
+/** Abre o projeto-do-jogo.md da pasta (criando, se ainda não existir). */
+async function abrirDiario(uri?: vscode.Uri) {
+    const alvo = uri instanceof vscode.Uri ? uri : documentoCAberto()?.uri;
+    if (!alvo) {
+        vscode.window.showInformationMessage('Abra um arquivo .c na pasta do seu jogo.');
+        return;
+    }
+    await projetos.comecar(alvo);
+    await vscode.window.showTextDocument(vscode.Uri.file(projetos.caminhoDoDiario(alvo)), { preview: false, viewColumn: vscode.ViewColumn.Beside });
 }
 
 /** Começa o projeto do jogo na pasta do arquivo: o painel passa a mostrar "Meu jogo". */

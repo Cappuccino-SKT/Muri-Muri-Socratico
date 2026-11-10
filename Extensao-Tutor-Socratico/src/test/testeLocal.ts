@@ -10,11 +10,12 @@ import { comentarioInicial, reconhecerExercicio } from '../reconhecer';
 import { analisarCodigo, traduzirMensagemGcc } from '../didatico';
 import { carregarMaterial, ehProjetoRaylib, selecionarAulas } from '../material';
 import { bibliotecasPadraoDaRaylib, explicarErroDeCompilacaoDoJogo, interpretarSaidaGcc, verificarComGcc } from '../gcc';
-import { CRITERIOS_DE_QUALIDADE, instrucaoDoComando, montarContexto, numerarLinhas, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from '../prompt';
-import { cartaoDaNota, FiltroDoBloco, juntarEtapas, lerBloco, lerEtapas, moverLinha, somarNota } from '../pontos';
+import { ATUALIZAR_DIARIO, CRITERIOS_DE_QUALIDADE, instrucaoDoComando, montarContexto, numerarLinhas, PROXIMO_NA_QUALIDADE, REGRAS_DO_TUTOR } from '../prompt';
+import { cartaoDaNota, FiltroDoBloco, juntarEtapas, lerBloco, lerEtapas, moverLinha, pontosDoArquivo, semelhancaDeLinhas, somarNota } from '../pontos';
 import { BRIEF_A_PREENCHER, ENUNCIADO_A_PREENCHER, montarCabecalho, montarComentarioDoEnunciado, temCabecalhoDoxygen, verificarIndentacao, verificarQualidade } from '../cabecalho';
 import { limparCodigo } from '../didatico';
 import { verificarMakefile } from '../makefile';
+import { aplicarAtualizacao, atualizacaoVazia, diarioVazio, escreverDiario, gerarMapa, lerBlocoDiario, lerDiario, mapearArquivo } from '../diario';
 
 const raiz = path.join(__dirname, '..', '..');
 const material = carregarMaterial(path.join(raiz, 'material'));
@@ -637,6 +638,99 @@ int main() {
         assert.ok(contexto.includes('PLANO DO JOGO: se houver'));
         const semPlano = montarContexto(material, [], { codigo: jogo, projetoRaylib: true, jogo: { plano: '', etapas: [] } });
         assert.ok(semPlano.includes('ainda não escreveu o plano') && !semPlano.includes('## ETAPAS DO DESENVOLVIMENTO'));
+    });
+
+    // Save do projeto do jogo: projeto-do-jogo.md.
+    await teste('projeto-do-jogo.md: escreve e lê de volta igual, e guarda seções do aluno', () => {
+        const diario = { ...diarioVazio(), plano: 'Nave que desvia.\nTeclas: setas.', etapas: [{ texto: 'Janela', feita: true }, { texto: 'Mover', feita: false }],
+            ondeParei: 'Nave anda.', decisoes: ['struct Nave em nave.h'], problemas: ['sai da tela'], historico: ['2026-11-03: janela'],
+            outras: [{ titulo: 'Ideias para depois', texto: '- chefão no fim' }] };
+        const md = escreverDiario(diario, '- `main.c`: funções `main`');
+        assert.deepStrictEqual(lerDiario(md), diario);
+        assert.ok(md.includes('## Mapa do código') && md.indexOf('## Ideias para depois') < md.indexOf('## Mapa do código'));
+        const editadoAMao = md.replace('- [ ] Mover', '- [X] Mover').replace('## Decisões', '## decisoes');
+        assert.deepStrictEqual(lerDiario(editadoAMao).etapas.map(e => e.feita), [true, true], '[X] maiúsculo também marca');
+        assert.deepStrictEqual(lerDiario(editadoAMao).decisoes, ['struct Nave em nave.h'], 'título sem acento também vale');
+        assert.deepStrictEqual(lerDiario(escreverDiario(diarioVazio())), diarioVazio(), 'as dicas (comentários) não viram conteúdo');
+    });
+
+    await teste('bloco DIARIO: troca "onde parei", acrescenta sem repetir e tira o problema resolvido', () => {
+        const bloco = lerBlocoDiario('\nonde parei: Nave anda; falta a borda.\ndecisão: struct Nave em nave.h\nproblema: A nave sai da tela pela direita\nhistórico: movimento com as setas\n-->');
+        assert.ok(!atualizacaoVazia(bloco) && atualizacaoVazia(lerBlocoDiario('\n-->')));
+        let diario = aplicarAtualizacao({ ...diarioVazio(), decisoes: ['Struct Nave em nave.h'] }, bloco, new Date(2026, 10, 3));
+        assert.strictEqual(diario.ondeParei, 'Nave anda; falta a borda.');
+        assert.deepStrictEqual(diario.decisoes, ['Struct Nave em nave.h'], 'decisão repetida não entra de novo');
+        assert.deepStrictEqual(diario.historico, ['2026-11-03: movimento com as setas']);
+        diario = aplicarAtualizacao(diario, lerBlocoDiario('resolvido: a nave sai da tela\n-->'), new Date(2026, 10, 4));
+        assert.deepStrictEqual(diario.problemas, [], 'resolvido tira o problema parecido');
+        assert.strictEqual(diario.ondeParei, 'Nave anda; falta a borda.', 'sem "onde parei" novo, fica o antigo');
+    });
+
+    await teste('mapa do código: arquivos, includes do projeto, tipos, enums e funções (sem as chamadas)', () => {
+        const arquivos = [
+            { nome: 'main.c', texto: '#include "raylib.h"\n#include "nave.h"\n/* void Falsa(void) { } */\nint main(void)\n{\n    int x = Somar(2, 3);\n    if (x) { MoverNave(&nave); }\n    return 0;\n}\nstatic float Somar(int a, int b) { return a + b; }\n' },
+            { nome: 'nave.h', texto: '#ifndef NAVE_H\n#define NAVE_H\ntypedef struct { float x, y; int vidas; } Nave;\ntypedef enum { TELA_MENU, TELA_JOGO = 1, TELA_FIM } Tela;\nvoid MoverNave(Nave *nave);\n#endif\n' },
+        ];
+        const main = mapearArquivo(arquivos[0]);
+        assert.deepStrictEqual(main.funcoes, ['main', 'Somar'], 'comentário e chamadas não contam');
+        const nave = mapearArquivo(arquivos[1]);
+        assert.deepStrictEqual([nave.tipos, nave.prototipos, nave.enums], [['Nave', 'Tela'].slice(0, 1), ['MoverNave'], [{ nome: 'Tela', valores: ['TELA_MENU', 'TELA_JOGO', 'TELA_FIM'] }]]);
+        const mapa = gerarMapa(arquivos);
+        assert.ok(mapa.startsWith('- `nave.h`'), '.h primeiro');
+        assert.ok(mapa.includes('- `main.c`: inclui `nave.h`; funções `main`, `Somar`'), mapa);
+        assert.ok(!mapa.includes('raylib_h'), 'raylib.h não é arquivo do projeto');
+        assert.ok(mapa.includes('```mermaid\ngraph LR\n    main_c["main.c"] --> nave_h["nave.h"]'));
+        assert.strictEqual(gerarMapa([]), '');
+    });
+
+    await teste('vários blocos na mesma resposta (PONTOS + DIARIO), mesmo em pedaços', () => {
+        const resposta = 'Veja a linha 5.\n<!--PONTOS\nresolvido: -\n5 | Onde a nave para?\n-->\n<!--DIARIO\nonde parei: falta a borda\n-->';
+        for (let tamanho = 1; tamanho <= 7; tamanho++) {
+            const filtro = new FiltroDoBloco();
+            let visivel = '';
+            for (let i = 0; i < resposta.length; i += tamanho) {
+                visivel += filtro.empurrar(resposta.slice(i, i + tamanho));
+            }
+            const fim = filtro.terminar();
+            assert.strictEqual(visivel + fim.resto, 'Veja a linha 5.\n', `pedaços de ${tamanho}`);
+            assert.strictEqual(fim.bloco!.pontos[0].linha, 5);
+            assert.strictEqual(lerBlocoDiario(fim.diario!).ondeParei, 'falta a borda');
+        }
+    });
+
+    await teste('tutor recebe o diário e o mapa, e /salvar exige o bloco DIARIO', () => {
+        const contexto = montarContexto(material, [], { codigo: jogo, projetoRaylib: true, jogo: {
+            plano: 'Nave', etapas: [], ondeParei: 'Nave anda; falta a borda.', decisoes: ['struct Nave em nave.h'], problemas: ['sai da tela'],
+            historico: Array.from({ length: 12 }, (_, i) => `dia ${i}`), mapa: '- `main.c`: funções `main`' } });
+        assert.ok(contexto.includes('## DIÁRIO DO PROJETO') && contexto.includes('### Onde o aluno parou\nNave anda; falta a borda.'));
+        assert.ok(contexto.includes('não as contradiga') && contexto.includes('- sai da tela'));
+        assert.ok(contexto.includes('- dia 11') && !contexto.includes('- dia 3\n'), 'só os últimos registros do histórico');
+        assert.ok(contexto.includes('## MAPA DO CÓDIGO'));
+        assert.ok(ATUALIZAR_DIARIO.includes('<!--DIARIO') && ATUALIZAR_DIARIO.includes('retome a partir dali'));
+        assert.ok(instrucaoDoComando('salvar')!.includes('OBRIGATÓRIO'));
+    });
+
+    // Bugs achados no teste com o Copilot (03/11/2026).
+    await teste('pontos com o nome do arquivo são lidos, e os de outros arquivos não são marcados', () => {
+        const bloco = lerBloco('\nresolvido: -\nMakefile:2 | A linha começa com TAB?\nmain.c:16 | IsKeyPressed anda só um passo?\n`main.c` linha 19 | Carregar a textura no laço?\n22 | Sem arquivo\n-->');
+        assert.deepStrictEqual(bloco.pontos.map(p => [p.arquivo, p.linha]), [['Makefile', 2], ['main.c', 16], ['main.c', 19], [undefined, 22]]);
+        assert.deepStrictEqual(pontosDoArquivo(bloco.pontos, 'main.c').map(p => p.linha), [16, 19, 22], 'o ponto do Makefile não marca o main.c');
+        assert.deepStrictEqual(pontosDoArquivo(bloco.pontos, 'MAIN.C').map(p => p.linha), [16, 19, 22], 'sem diferenciar maiúsculas');
+        assert.strictEqual(lerBloco(Array.from({ length: 12 }, (_, i) => `${i + 1} | p${i}`).join('\n')).pontos.length, 8, 'no máximo 8');
+    });
+
+    await teste('semelhança de linhas para reencontrar a marcação depois de edições grandes', () => {
+        assert.strictEqual(semelhancaDeLinhas('  scanf("%d", x);', 'scanf("%d", x);'), 1, 'recuo não conta');
+        assert.ok(semelhancaDeLinhas('scanf("%d", notas[i]);', 'scanf("%d", &notas[i]);') > 0.9);
+        assert.ok(semelhancaDeLinhas('scanf("%d", notas[i]);', 'soma = soma + notas[i];') < 0.6);
+        assert.strictEqual(semelhancaDeLinhas('', 'x'), 0);
+    });
+
+    await teste('instruções: marcar só o código aberto e raylib ausente não é erro do código', () => {
+        const verificar = instrucaoDoComando('verificar')!;
+        assert.ok(verificar.includes('NÃO entram no bloco') && verificar.includes('no máximo 8') && verificar.includes('sem o nome do arquivo'));
+        const contexto = montarContexto(material, [], { codigo: jogo, projetoRaylib: true });
+        assert.ok(contexto.includes('problema de INSTALAÇÃO neste computador'));
     });
 
     console.log(falhas === 0 ? '\nTodos os testes passaram.' : `\n${falhas} teste(s) falharam.`);

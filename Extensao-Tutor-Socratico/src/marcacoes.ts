@@ -5,7 +5,7 @@
 // qualidade, o aluno marca os pontos como feitos sem gastar a IA, e o tutor
 // confere todos de uma vez no fim, com a nota nova.
 import * as vscode from 'vscode';
-import { BlocoDePontos, moverLinha, Ponto } from './pontos';
+import { BlocoDePontos, moverLinha, Ponto, semelhancaDeLinhas } from './pontos';
 
 export type TipoDeVerificacao = 'codigo' | 'qualidade';
 
@@ -57,8 +57,11 @@ export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
         if (bloco.pontos.length === 0) {
             this.porArquivo.delete(chave);
         } else {
+            // Guarda o texto de cada linha marcada, para reencontrá-la depois de edições grandes.
+            const documento = vscode.workspace.textDocuments.find(d => d.uri.toString() === chave);
+            const pontos = bloco.pontos.map(p => ({ ...p, textoDaLinha: documento && p.linha <= documento.lineCount ? documento.lineAt(p.linha - 1).text : undefined }));
             // Ao conferir, continua no mesmo tipo de verificação.
-            this.porArquivo.set(chave, { pontos: bloco.pontos, resolvidos, tipo: conferindo && antes ? antes.tipo : tipo, feitos: [] });
+            this.porArquivo.set(chave, { pontos, resolvidos, tipo: conferindo && antes ? antes.tipo : tipo, feitos: [] });
         }
         this.redesenhar();
     }
@@ -141,6 +144,9 @@ export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
                     mexeu = true;
                 }
             }
+            if (reancorar(ponto, evento.document)) {
+                mexeu = true;
+            }
         }
         if (mexeu) {
             this.redesenhar();
@@ -194,6 +200,44 @@ export class Marcacoes implements vscode.CodeLensProvider, vscode.Disposable {
         texto.isTrusted = { enabledCommands: COMANDOS_DO_PONTO };
         return texto;
     }
+}
+
+const DISTANCIA_PARA_REANCORAR = 8;
+const SEMELHANCA_MINIMA = 0.6;
+
+/**
+ * Edições grandes (arquivo recarregado do disco, Shift+Alt+F) chegam como
+ * vários trechos trocados de uma vez, e a conta de linhas pode errar. Se a
+ * linha calculada não é mais a marcada, procura por perto a mais parecida
+ * com o texto que estava nela. Devolve true se o ponto mudou de linha.
+ */
+function reancorar(ponto: Ponto, documento: vscode.TextDocument): boolean {
+    const texto = (linha: number) => linha >= 1 && linha <= documento.lineCount ? documento.lineAt(linha - 1).text : '';
+    const guardado = ponto.textoDaLinha;
+    let mudou = false;
+    // Linhas muito curtas (como "}") se repetem demais para servir de referência.
+    if (guardado !== undefined && guardado.trim().length >= 6 && texto(ponto.linha).trim() !== guardado.trim()) {
+        let melhor = ponto.linha;
+        let nota = semelhancaDeLinhas(texto(ponto.linha), guardado);
+        for (let distancia = 1; distancia <= DISTANCIA_PARA_REANCORAR; distancia++) {
+            for (const linha of [ponto.linha - distancia, ponto.linha + distancia]) {
+                const s = semelhancaDeLinhas(texto(linha), guardado);
+                if (s > nota + 0.0001) {
+                    melhor = linha;
+                    nota = s;
+                }
+            }
+        }
+        if (melhor !== ponto.linha && nota >= SEMELHANCA_MINIMA) {
+            const deslocamento = melhor - ponto.linha;
+            ponto.linha = melhor;
+            ponto.ate = ponto.ate ? ponto.ate + deslocamento : undefined;
+            mudou = true;
+        }
+    }
+    // Acompanha o texto atual: o aluno pode estar editando a própria linha marcada.
+    ponto.textoDaLinha = texto(ponto.linha);
+    return mudou;
 }
 
 /** Botões em cima da linha marcada: [texto, comando]. O primeiro leva até o ponto. */

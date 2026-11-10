@@ -128,6 +128,20 @@ As funções do material foram conferidas no `raylib.h` oficial da versão 6.2.
 - **Plano do jogo:** o aluno escreve o que planeja (ideia, teclas, como ganha e perde, telas, o que tem no jogo). O plano vale para todos os `.c` da pasta, e o tutor o usa como base de toda ajuda, como o enunciado num exercício. Nas verificações, ele compara o código com o plano e com a etapa atual.
 - **🧭 Montar as etapas do desenvolvimento** (`/plano`): o tutor divide o plano em 5 a 10 etapas pequenas, da versão mínima jogável ao acabamento, e elas viram uma lista no painel. O aluno marca cada etapa quando termina, sem gastar a IA. Ao refazer, as etapas já feitas continuam marcadas.
 - **➡️ Me ajude com a próxima etapa** (`/passo`): o tutor explica a etapa atual, quebra em passos menores e indica as funções da raylib, mas a lógica continua com perguntas.
+
+**O "save" do projeto: `projeto-do-jogo.md`**. O projeto fica num arquivo Markdown na pasta do jogo. Ele vai junto com o código (pen drive, GitHub, outro computador) e não se perde quando o perfil do VS Code do laboratório é apagado. O aluno pode ler e editar o arquivo à vontade; o painel acompanha.
+
+| Seção | Quem escreve | Para que serve |
+|---|---|---|
+| Plano do jogo | o aluno (no painel ou no arquivo) | a base de toda ajuda |
+| Etapas (`- [x]`) | o tutor monta, o aluno marca | em que ponto do plano o aluno está |
+| Onde parei | o tutor, no fim de cada conversa | retomar na próxima vez ("📌 Onde você parou" no painel) |
+| Decisões | o tutor anota o que o aluno decidiu | não contradizer o que já foi decidido (ex.: "struct Nave em nave.h") |
+| Problemas em aberto | o tutor acrescenta e tira | não esquecer o que ficou travado |
+| Histórico | o tutor, com a data | o caminho do projeto |
+| Mapa do código | a extensão, sozinha (sem IA) | arquivos, `#include` entre eles (com um gráfico Mermaid, que o GitHub desenha), structs, enums e funções de cada `.c`/`.h`; refeito ao salvar |
+
+O tutor lê o arquivo em toda pergunta do projeto e o atualiza no fim das respostas. **💾 Salvar onde parei** (`/salvar`) pede um resumo do que foi feito e do próximo passo; **📄 Abrir o diário** abre o arquivo. Projetos começados na versão 0.9 passam para o arquivo sozinhos.
 - O tutor **pode mostrar como usar a biblioteca** (exemplos curtos, como a documentação). A **lógica do jogo** é do aluno: nela, ele continua com perguntas e pistas.
 - No painel aparece o cartão **🎮 Projeto com raylib**, com o botão **▶ Compilar e rodar o jogo**. Ele:
   - compila ligando a raylib (`-lraylib -lopengl32 -lgdi32 -lwinmm`);

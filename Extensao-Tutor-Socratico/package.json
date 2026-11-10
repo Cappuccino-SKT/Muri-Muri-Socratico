@@ -2,7 +2,7 @@
   "name": "tutor-socratico-c",
   "displayName": "Muri-Muri Socratico",
   "description": "Tutor de IA para Fundamentos de Programação em C: ajuda com perguntas e pistas, sem entregar a solução, e indica a videoaula certa para cada dúvida.",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "publisher": "Muri-Muri-Socratico",
   "author": {
     "name": "FelipeSKT"
@@ -82,6 +82,10 @@
           {
             "name": "passo",
             "description": "Projeto do jogo: ajuda com a próxima etapa do desenvolvimento"
+          },
+          {
+            "name": "salvar",
+            "description": "Projeto do jogo: salvar onde você parou e o próximo passo no projeto-do-jogo.md"
           },
           {
             "name": "proximo",
@@ -291,6 +295,16 @@
         "command": "tutorSocratico.proximaEtapa",
         "title": "Ajuda com a próxima etapa do jogo",
         "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.salvarDiario",
+        "title": "Salvar onde parei no projeto do jogo",
+        "category": "Tutor Socrático"
+      },
+      {
+        "command": "tutorSocratico.abrirDiario",
+        "title": "Abrir o diário do projeto do jogo (projeto-do-jogo.md)",
+        "category": "Tutor Socrático"
       }
     ],
     "menus": {
@@ -398,6 +412,10 @@
         },
         {
           "command": "tutorSocratico.encerrarJogo",
+          "when": "editorLangId == c"
+        },
+        {
+          "command": "tutorSocratico.abrirDiario",
           "when": "editorLangId == c"
         }
       ]

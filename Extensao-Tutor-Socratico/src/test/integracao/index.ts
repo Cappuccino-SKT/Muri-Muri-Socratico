@@ -1,6 +1,7 @@
 // Teste de integração: roda DENTRO de uma janela do VS Code (perfil isolado,
 // sem Copilot). Verifica ativação, comandos, painel, GCC e modo aprendizado.
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { montarCatalogo } from '../../catalogo';
@@ -164,6 +165,16 @@ export async function run(): Promise<void> {
     assert.strictEqual(marcacoes.atual(vazio)!.ponto.linha, 6);
     ok('a marcação acompanha a linha quando o aluno escreve acima dela');
 
+    // Formatador ou arquivo recarregado do disco: o texto todo é trocado de uma vez.
+    const textoTodo = editorColado.document.getText();
+    const tudo = new vscode.Range(0, 0, editorColado.document.lineCount, 0);
+    await editorColado.edit(e => e.replace(tudo, '// linha nova 1\n// linha nova 2\n' + textoTodo));
+    assert.strictEqual(marcacoes.atual(vazio)!.ponto.linha, 8, 'reencontra a linha marcada pelo texto');
+    assert.strictEqual(editorColado.document.lineAt(7).text.trim(), 'return 0;');
+    await editorColado.edit(e => e.replace(new vscode.Range(0, 0, editorColado.document.lineCount, 0), textoTodo));
+    assert.strictEqual(marcacoes.atual(vazio)!.ponto.linha, 6);
+    ok('a marcação continua na linha certa quando o arquivo todo é trocado (formatador, recarregar do disco)');
+
     marcacoes.definir(vazio, { resolvido: true, pontos: [{ linha: 4, pergunta: 'Outra?' }] }, true);
     botoes = await lentes();
     assert.strictEqual(botoes[0].command!.title, '🎓 Ponto 2 de 2');
@@ -232,6 +243,8 @@ export async function run(): Promise<void> {
     const { projetos } = extensao!.exports as { projetos: import('../../projeto').ProjetosDeJogo };
     const arquivoDoJogo = vscode.Uri.joinPath(pasta, 'meu_jogo.c');
     const outroArquivo = vscode.Uri.joinPath(pasta, 'inimigos.c');
+    // Uma rodada anterior interrompida pode ter deixado o arquivo do projeto na pasta.
+    fs.rmSync(projetos.caminhoDoDiario(arquivoDoJogo), { force: true });
     await vscode.workspace.fs.writeFile(arquivoDoJogo, Buffer.from('int main(void)\n{\n    return 0;\n}\n', 'utf8'));
     await vscode.window.showTextDocument(arquivoDoJogo);
     assert.strictEqual(projetos.doArquivo(arquivoDoJogo), undefined, 'sem projeto antes de começar');
@@ -244,12 +257,52 @@ export async function run(): Promise<void> {
     assert.deepStrictEqual(doOutro!.etapas.map(e => e.feita), [true, false]);
     await projetos.definirEtapas(arquivoDoJogo, [{ texto: 'janela', feita: false }, { texto: 'Asteroides', feita: false }]);
     assert.deepStrictEqual(projetos.doArquivo(arquivoDoJogo)!.etapas.map(e => [e.texto, e.feita]), [['janela', true], ['Asteroides', false]]);
-    await vscode.commands.executeCommand('tutorSocratico.encerrarJogo', arquivoDoJogo);
+
+    // O "save" é um arquivo na pasta do jogo: vai junto com o código para outro computador.
+    const diarioNoDisco = vscode.Uri.file(projetos.caminhoDoDiario(arquivoDoJogo));
+    const lerNoDisco = async () => Buffer.from(await vscode.workspace.fs.readFile(diarioNoDisco)).toString('utf8');
+    let noDisco = await lerNoDisco();
+    assert.ok(noDisco.includes('## Plano do jogo') && noDisco.includes('Nave que desvia de asteroides') && noDisco.includes('- [x] janela'), noDisco);
+    await projetos.atualizarDiario(arquivoDoJogo, { ondeParei: 'A nave anda; falta a borda.', decisoes: ['struct Nave em nave.h'], problemas: [], resolvidos: [], historico: ['movimento'] });
+    // O aluno escreve uma função nova no editor e salva: o mapa é refeito.
+    const docDoJogo = await vscode.workspace.openTextDocument(arquivoDoJogo);
+    const editorDoJogo = await vscode.window.showTextDocument(docDoJogo);
+    await editorDoJogo.edit(e => e.insert(new vscode.Position(docDoJogo.lineCount, 0), 'void MoverNave(void) { }\n'));
+    await docDoJogo.save();
+    await projetos.atualizarMapa(arquivoDoJogo);
+    noDisco = await lerNoDisco();
+    assert.ok(noDisco.includes('## Onde parei\n<!--') && noDisco.includes('A nave anda; falta a borda.') && noDisco.includes('- struct Nave em nave.h'), noDisco);
+    assert.ok(noDisco.includes('`meu_jogo.c`: funções `main`, `MoverNave`'), noDisco.slice(noDisco.indexOf('## Mapa')));
+    // Edição à mão no arquivo também vale (ex.: marcou a etapa no próprio .md).
+    await vscode.workspace.fs.writeFile(diarioNoDisco, Buffer.from(noDisco.replace('- [ ] Asteroides', '- [x] Asteroides'), 'utf8'));
+    assert.deepStrictEqual(projetos.doArquivo(arquivoDoJogo)!.etapas.map(e => e.feita), [true, true]);
+
+    await projetos.encerrar(arquivoDoJogo);
     assert.strictEqual(projetos.doArquivo(arquivoDoJogo), undefined);
+    assert.ok(!fs.existsSync(diarioNoDisco.fsPath), 'voltar ao modo exercício apaga o arquivo');
+
+    // Quem começou o projeto na 0.9 (plano na memória do VS Code) não perde nada: vai para o arquivo.
+    const { ProjetosDeJogo } = await import('../../projeto');
+    const memoriaAntiga: Record<string, unknown> = {
+        'tutorSocratico.projetosDeJogo': { [path.dirname(arquivoDoJogo.fsPath).toLowerCase()]: { plano: 'Plano da versão 0.9', etapas: [{ texto: 'Janela', feita: true }] } },
+    };
+    const memoria = {
+        get: <T>(chave: string, padrao?: T) => (memoriaAntiga[chave] as T) ?? padrao,
+        update: async (chave: string, valor: unknown) => { memoriaAntiga[chave] = valor; },
+        keys: () => Object.keys(memoriaAntiga),
+    } as unknown as vscode.Memento;
+    const migrador = new ProjetosDeJogo(memoria);
+    const migrado = migrador.doArquivo(arquivoDoJogo);
+    assert.strictEqual(migrado?.plano, 'Plano da versão 0.9');
+    assert.ok(fs.readFileSync(diarioNoDisco.fsPath, 'utf8').includes('- [x] Janela'), 'gravado no arquivo');
+    assert.deepStrictEqual(memoriaAntiga['tutorSocratico.projetosDeJogo'], {}, 'e apagado da memória');
+    migrador.dispose();
+    fs.rmSync(diarioNoDisco.fsPath, { force: true });
+    ok('projeto da versão 0.9 (na memória do VS Code) migra para o projeto-do-jogo.md');
     for (const id of ['tutorSocratico.planejarJogo', 'tutorSocratico.proximaEtapa']) {
         assert.ok((await vscode.commands.getCommands(true)).includes(id), id);
     }
-    ok('projeto do jogo: plano por pasta, etapas marcadas (mantidas ao refazer) e volta ao modo exercício');
+    ok('projeto do jogo: plano, etapas, diário e mapa do código no projeto-do-jogo.md da pasta (e edição à mão vale)');
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
     await vscode.workspace.fs.delete(arquivoDoJogo);
 

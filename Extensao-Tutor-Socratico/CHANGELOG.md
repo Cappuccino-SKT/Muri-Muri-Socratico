@@ -1,5 +1,14 @@
 # Histórico de versões
 
+## 1.0.0
+- **O "save" do projeto do jogo, `projeto-do-jogo.md`**: o plano e as etapas saíram da memória do VS Code e foram para um arquivo Markdown na pasta do jogo. Assim eles vão junto com o código para outro computador e não se perdem quando o perfil do laboratório é apagado. Projetos da versão 0.9 migram sozinhos.
+- O arquivo também guarda **onde o aluno parou**, as **decisões** dele, os **problemas em aberto** e o **histórico**. O tutor lê tudo em cada pergunta do projeto e atualiza o arquivo no fim das respostas, com um bloco escondido.
+- **Mapa do código** no arquivo, gerado sem IA a partir dos `.c` e `.h` da pasta: os arquivos, os `#include` entre eles (com um gráfico Mermaid), structs, enums e funções. É refeito ao salvar um arquivo.
+- No painel: **📌 Onde você parou**, **💾 Salvar onde parei** (novo `/salvar`) e **📄 Abrir o diário**. O aluno pode editar o arquivo à mão; o painel acompanha.
+- Uma resposta do tutor agora pode trazer mais de um bloco escondido (por exemplo, pontos para marcar e o diário).
+- Correções do teste com o Copilot: na verificação do jogo, os pontos voltaram a ser marcados no código (o tutor escrevia o nome do arquivo antes da linha) e problemas de outros arquivos, como o Makefile, aparecem à parte, sem desencontrar a numeração; a raylib não instalada é tratada como instalação, e não como erro do código; erros no que já está escrito contam mesmo que sejam de etapas futuras; a marcação não sai da linha quando o arquivo todo é trocado (formatador, recarregar do disco); o título do painel mostra "Meu jogo" ou "Exercício"; no jogo, a sugestão "Qual vídeo assistir?" virou "Salvar onde parei"; o item da raylib no "Tudo pronto?" só aparece nos arquivos do jogo.
+- Saída "Tutor Socrático: depuração" com os blocos escondidos de cada resposta.
+
 ## 0.9.0
 - **Projeto final de Fundamentos 2 (jogo com a raylib 6.2):** material novo em 6 partes (instalar e compilar, desenho e texto, teclado e mouse, movimento e colisões, imagens e sons, organização do jogo), com as funções conferidas no `raylib.h` oficial. O material só entra quando o arquivo usa a raylib ou a pergunta fala dela.
 - O tutor pode mostrar como usar a biblioteca; a lógica do jogo continua com perguntas e pistas.

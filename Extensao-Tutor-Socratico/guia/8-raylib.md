@@ -62,6 +62,9 @@ No painel, a área **🎮 Meu jogo** aparece nos arquivos que usam a raylib. Ant
 1. Escreva o **plano**: a ideia, as teclas, como ganha e como perde, as telas e o que tem no jogo.
 2. Clique em **🧭 Montar as etapas do desenvolvimento**: o tutor divide o plano em etapas pequenas, que aparecem no painel.
 3. Clique em **➡️ Me ajude com a próxima etapa** e programe. Ao terminar uma etapa, marque-a no painel.
+4. Antes de parar, clique em **💾 Salvar onde parei**. Na próxima vez, o painel mostra **📌 Onde você parou** e o tutor continua dali.
+
+Tudo isso fica no arquivo **`projeto-do-jogo.md`**, na pasta do jogo. **Leve esse arquivo junto com o código** (pen drive, GitHub): em outro computador, o tutor continua de onde você parou. Você também pode abrir e editar o arquivo à vontade (**📄 Abrir o diário**).
 
 ## Pedir ajuda
 

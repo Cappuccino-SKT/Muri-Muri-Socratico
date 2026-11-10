@@ -8,6 +8,38 @@ export interface Ponto {
     linha: number;
     ate?: number;
     pergunta: string;
+    // Quando o modelo diz o arquivo ("main.c:20 | ..."): só vale se for o arquivo aberto.
+    arquivo?: string;
+    // Texto da linha marcada, para reencontrá-la depois de edições grandes (ver marcacoes.ts).
+    textoDaLinha?: string;
+}
+
+/** Fica só com os pontos do arquivo aberto (os sem arquivo são dele). */
+export function pontosDoArquivo(pontos: Ponto[], nomeDoArquivo: string): Ponto[] {
+    const nome = nomeDoArquivo.toLowerCase();
+    return pontos.filter(p => !p.arquivo || p.arquivo.toLowerCase() === nome).map(({ arquivo: _arquivo, ...resto }) => resto);
+}
+
+/** Semelhança entre duas linhas (0 a 1), para reencontrar uma linha marcada que mudou pouco. */
+export function semelhancaDeLinhas(a: string, b: string): number {
+    const x = a.trim();
+    const y = b.trim();
+    if (x === y) {
+        return 1;
+    }
+    if (!x || !y || x.length > 300 || y.length > 300) {
+        return 0;
+    }
+    // Distância de edição (Levenshtein) em uma linha só de memória.
+    let anterior = Array.from({ length: y.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= x.length; i++) {
+        const atual = [i];
+        for (let j = 1; j <= y.length; j++) {
+            atual[j] = Math.min(anterior[j] + 1, atual[j - 1] + 1, anterior[j - 1] + (x[i - 1] === y[j - 1] ? 0 : 1));
+        }
+        anterior = atual;
+    }
+    return 1 - anterior[y.length] / Math.max(x.length, y.length);
 }
 
 export interface BlocoDePontos {
@@ -60,10 +92,12 @@ export function cartaoDaNota(criterios: Criterio[], anterior?: number): string {
     ].join('\n');
 }
 
-// Dois blocos escondidos: PONTOS (linhas para marcar no editor) e ETAPAS
-// (etapas de desenvolvimento do projeto do jogo).
-const INICIO_DO_BLOCO = /<!--\s*(PONTOS|ETAPAS)/i;
-const PREFIXOS_DO_BLOCO = ['<!--pontos', '<!--etapas'];
+// Blocos escondidos no fim da resposta: PONTOS (linhas para marcar no editor),
+// ETAPAS (etapas do projeto do jogo) e DIARIO (o que atualizar no
+// projeto-do-jogo.md). Uma resposta pode trazer mais de um.
+const INICIO_DO_BLOCO = /<!--\s*(PONTOS|ETAPAS|DIARIO)/i;
+const PREFIXOS_DO_BLOCO = ['<!--pontos', '<!--etapas', '<!--diario'];
+const BLOCOS = /<!--\s*(PONTOS|ETAPAS|DIARIO)\b([\s\S]*?)(?:-->|$)/gi;
 const MAX_PONTOS = 8;
 const MAX_ETAPAS = 12;
 
@@ -72,24 +106,23 @@ export interface Etapa {
     feita: boolean;
 }
 
-/** Separa o bloco escondido do texto que vai aparecendo no chat. */
+/** Separa os blocos escondidos do texto que vai aparecendo no chat. */
 export class FiltroDoBloco {
     private pendente = '';
-    private bloco?: string;
-    private tipo?: 'pontos' | 'etapas';
+    // Do primeiro marcador em diante, tudo fica escondido (os blocos vêm no fim).
+    private escondido?: string;
 
     /** Recebe um trecho da resposta e devolve o que pode ser mostrado ao aluno. */
     empurrar(trecho: string): string {
-        if (this.bloco !== undefined) {
-            this.bloco += trecho;
+        if (this.escondido !== undefined) {
+            this.escondido += trecho;
             return '';
         }
         const texto = this.pendente + trecho;
         const achado = INICIO_DO_BLOCO.exec(texto);
         if (achado) {
             this.pendente = '';
-            this.tipo = achado[1].toLowerCase() === 'etapas' ? 'etapas' : 'pontos';
-            this.bloco = texto.slice(achado.index + achado[0].length);
+            this.escondido = texto.slice(achado.index);
             return texto.slice(0, achado.index);
         }
         // O marcador pode chegar partido entre dois trechos: segura o fim
@@ -106,14 +139,25 @@ export class FiltroDoBloco {
         return texto;
     }
 
-    /** Fim da resposta: devolve o que sobrou para mostrar e o bloco, se veio. */
-    terminar(): { resto: string; bloco?: BlocoDePontos; etapas?: Etapa[] } {
+    /**
+     * Fim da resposta: devolve o que sobrou para mostrar e os blocos que vieram.
+     * O DIARIO volta como texto (é lido em diario.ts).
+     */
+    terminar(): { resto: string; bloco?: BlocoDePontos; etapas?: Etapa[]; diario?: string; bruto?: string } {
         const resto = this.pendente;
         this.pendente = '';
-        if (this.bloco === undefined) {
-            return { resto };
+        const resultado: { resto: string; bloco?: BlocoDePontos; etapas?: Etapa[]; diario?: string; bruto?: string } = { resto, bruto: this.escondido };
+        for (const m of (this.escondido ?? '').matchAll(BLOCOS)) {
+            const tipo = m[1].toUpperCase();
+            if (tipo === 'PONTOS' && !resultado.bloco) {
+                resultado.bloco = lerBloco(m[2]);
+            } else if (tipo === 'ETAPAS' && !resultado.etapas) {
+                resultado.etapas = lerEtapas(m[2]);
+            } else if (tipo === 'DIARIO' && resultado.diario === undefined) {
+                resultado.diario = m[2];
+            }
         }
-        return this.tipo === 'etapas' ? { resto, etapas: lerEtapas(this.bloco) } : { resto, bloco: lerBloco(this.bloco) };
+        return resultado;
     }
 }
 
@@ -153,12 +197,17 @@ export function lerBloco(texto: string): BlocoDePontos {
             (bloco.criterios ??= []).push({ nome: nota[1], pontos: Number(nota[2]), maximo: Number(nota[3]) });
             continue;
         }
-        const ponto = /^(?:linhas?\s*)?(\d+)(?:\s*(?:-|–|a)\s*(\d+))?\s*\|\s*(.+)$/i.exec(linha);
+        // "20 | pergunta", "linha 20 | ...", e também com o arquivo na frente: "main.c:20 | ...".
+        const ponto = /^(?:`?((?:[\w.\-/\\]+\.[A-Za-z]+)|(?:GNU)?[Mm]akefile)`?\s*(?::|,|-)?\s*)?(?:linhas?\s*)?(\d+)(?:\s*(?:-|–|a)\s*(\d+))?\s*\|\s*(.+)$/i.exec(linha);
         if (ponto && bloco.pontos.length < MAX_PONTOS) {
-            const inicio = Number(ponto[1]);
-            const ate = ponto[2] ? Number(ponto[2]) : undefined;
+            const inicio = Number(ponto[2]);
+            const ate = ponto[3] ? Number(ponto[3]) : undefined;
             if (inicio > 0) {
-                bloco.pontos.push({ linha: inicio, ate: ate && ate > inicio ? ate : undefined, pergunta: ponto[3].trim() });
+                const novo: Ponto = { linha: inicio, ate: ate && ate > inicio ? ate : undefined, pergunta: ponto[4].trim() };
+                if (ponto[1]) {
+                    novo.arquivo = ponto[1].replace(/^.*[\\/]/, '');
+                }
+                bloco.pontos.push(novo);
             }
         }
     }

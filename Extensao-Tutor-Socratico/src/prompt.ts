@@ -85,7 +85,8 @@ const MARCAR_PONTOS = [
     'LINHA | PERGUNTA CURTA',
     '-->',
     'Na linha "resolvido", escreva "sim" ou "nao" quando o aluno pediu para conferir o ponto atual; nos outros casos, "-".',
-    'Depois, uma linha por ponto que AINDA falta revisar, do mais fácil para o mais difícil; a primeira é a que o aluno vai trabalhar agora. LINHA é o número da linha no código numerado (ou um intervalo, como 12-15). PERGUNTA CURTA tem até 12 palavras e não entrega a resposta.',
+    'Depois, uma linha por ponto que AINDA falta revisar, do mais fácil para o mais difícil (no máximo 8); a primeira é a que o aluno vai trabalhar agora. LINHA é só o NÚMERO da linha no CÓDIGO ABERTO PELO ALUNO, numerado acima (ou um intervalo, como 12-15), sem o nome do arquivo. PERGUNTA CURTA tem até 12 palavras e não entrega a resposta.',
+    'O bloco marca linhas do código aberto. Problemas em outros arquivos (Makefile, .h, outro .c) você cita no texto, mas eles NÃO entram no bloco.',
     'Não coloque o bloco dentro de ``` e não fale dele no texto. Se não houver pontos para revisar, escreva o bloco só com a linha "resolvido".',
 ].join('\n');
 
@@ -146,6 +147,7 @@ const INSTRUCOES_POR_COMANDO: Record<string, string> = {
         'Responda neste formato:',
         '- **Visão geral:** uma frase dizendo como o código está (compila? parece fazer o que foi pedido?) e quantos pontos você encontrou (ex.: "Encontrei 3 pontos; vamos um de cada vez, começando pelo mais simples.").',
         '- **📍 Ponto 1 – linha N:** apresente SÓ o primeiro ponto (o mais fácil): onde olhar e uma pergunta que leve o aluno a perceber o problema sozinho. Não descreva os outros pontos agora.',
+        '- Os pontos numerados são SÓ do código aberto, na mesma ordem e com a mesma contagem do bloco PONTOS (o "Ponto 1" do texto é a primeira linha do bloco). Se houver problema em outro arquivo (Makefile, .h), cite numa linha à parte no fim, sem número: "📄 Também veja: Makefile, linha 2 – ...".',
         '- Se o código funciona mas ainda tem pontos de QUALIDADE DO CÓDIGO, diga que ele funciona e siga com esses pontos, um por vez.',
         '- Se o código estiver correto e bem escrito, diga isso, explique em uma frase por que está certo e sugira um caso de teste para o aluno experimentar (ex.: valor zero, negativo, limite do vetor).',
         'Se não houver enunciado, deduza o objetivo pelo código e pergunte ao aluno se é isso mesmo antes de apontar erros de lógica.',
@@ -173,6 +175,13 @@ const INSTRUCOES_POR_COMANDO: Record<string, string> = {
         '- Indique as funções da raylib e a parte do material que ajudam (você pode mostrar um exemplo curto de USO da biblioteca, com nomes genéricos, como no material).',
         '- Para a lógica e a organização (que dados guardar, que struct ou enum criar, onde cada coisa vai no laço do jogo), faça perguntas que levem o aluno a decidir. Não escreva o código da etapa.',
         '- Termine com uma pergunta ou um primeiro passo concreto para ele tentar agora.',
+    ].join('\n'),
+    salvar: [
+        'O aluno vai parar por agora e quer SALVAR ONDE PAROU no projeto do jogo, para continuar depois (talvez em outro computador).',
+        '- Com base nesta conversa, no código, no MAPA DO CÓDIGO e nas etapas, escreva um resumo curto (3 a 5 linhas): o que ficou pronto, o que falta na etapa atual e qual é o PRÓXIMO PASSO exato para a próxima vez.',
+        '- Se alguma etapa parece pronta e ainda não está marcada, sugira marcá-la no painel.',
+        '- Termine dizendo que o resumo foi salvo no projeto-do-jogo.md.',
+        'Neste comando, o bloco DIARIO é OBRIGATÓRIO e precisa ter a linha "onde parei" e a linha "historico"; acrescente as decisões e os problemas novos.',
     ].join('\n'),
     qualidade: [
         'O aluno clicou em "Verificar a qualidade do código". Avalie SÓ a qualidade (legibilidade e organização), e NÃO a lógica. Se perceber um erro de lógica ou de compilação, não aponte qual é: diga em uma frase que vale usar também o botão "Verificar meu código".',
@@ -211,7 +220,17 @@ export interface ContextoDoAluno {
     // Makefile da pasta do projeto (ou o que está aberto no editor).
     makefile?: { nome: string; texto: string };
     // Projeto do jogo: o plano que o aluno escreveu e as etapas de desenvolvimento.
-    jogo?: { plano: string; etapas: { texto: string; feita: boolean }[] };
+    jogo?: {
+        plano: string;
+        etapas: { texto: string; feita: boolean }[];
+        // O que está salvo no projeto-do-jogo.md (o "save" do projeto).
+        ondeParei?: string;
+        decisoes?: string[];
+        problemas?: string[];
+        historico?: string[];
+        // Mapa do código gerado a partir dos .c e .h da pasta.
+        mapa?: string;
+    };
     // Pontos marcados no editor que o aluno está resolvendo, um por vez.
     pontos?: { pontos: Ponto[]; resolvidos: number; tipo?: 'codigo' | 'qualidade'; feitos?: Ponto[] };
 }
@@ -230,12 +249,33 @@ const PROJETO_RAYLIB = [
     '- Uso da BIBLIOTECA: você pode mostrar exemplos curtos (até cerca de 15 linhas) de como usar a raylib, como a documentação faria: o esqueleto da janela e do laço do jogo, como desenhar, ler o teclado, carregar uma imagem, tocar um som ou testar uma colisão. Use nomes e valores genéricos, e não os do jogo do aluno.',
     '- LÓGICA DO JOGO (regras, pontuação, inimigos, fases, o que acontece em cada colisão): é o trabalho do aluno. Não escreva essa parte nem o jogo inteiro; aqui valem o método socrático e a escada de pistas, como nos exercícios.',
     '- Use só funções que existem na raylib 6.2 (as do material). Se não tiver certeza de que uma função existe ou de como ela funciona, diga isso e indique o cheatsheet oficial (https://www.raylib.com/cheatsheet/cheatsheet.html) e os exemplos (https://www.raylib.com/examples.html), em vez de inventar.',
-    '- Erros de compilação: "raylib.h: No such file or directory" = a raylib não está instalada para esse GCC (Raylib 1); "undefined reference to InitWindow" (ou outra função da raylib) = faltou ligar a raylib (-lraylib -lopengl32 -lgdi32 -lwinmm). O botão "▶ Compilar e rodar o jogo" do painel do tutor já faz a ligação.',
+    '- "raylib.h: No such file or directory" é problema de INSTALAÇÃO neste computador, e não do código: diga isso uma vez (indique 🩺 Tudo pronto? no painel e a Raylib 1) e avalie o código mesmo assim, sem contar como ponto para corrigir.',
+    '- Erros de compilação: "undefined reference to InitWindow" (ou outra função da raylib) = faltou ligar a raylib (-lraylib -lopengl32 -lgdi32 -lwinmm). O botão "▶ Compilar e rodar o jogo" do painel do tutor já faz a ligação.',
     '- Ligue com Fundamentos 1 sempre que couber: struct para as entidades (Aula 14), vetores de structs (Aula 11), enum para as telas (Aula 15), funções (Aula 16), ponteiros (Aulas 17 e 19) e arquivos para o recorde (Aula 21).',
-    '- PLANO DO JOGO: se houver, use o plano e a ETAPA ATUAL como base de toda ajuda, como o enunciado num exercício. Nas verificações, compare o código com o plano e com a etapa atual (não espere que o jogo inteiro esteja pronto). Se a dúvida fugir do plano, ajude do mesmo jeito.',
+    '- PLANO DO JOGO: se houver, use o plano e a ETAPA ATUAL como base de toda ajuda, como o enunciado num exercício. Nas verificações, o que ainda falta das próximas etapas NÃO é erro (não espere que o jogo inteiro esteja pronto). Mas todo erro no código que JÁ está escrito conta, mesmo que seja de uma etapa futura que o aluno já começou: por exemplo, IsKeyPressed para andar (anda um passo por toque), LoadTexture dentro do laço do jogo (carrega a imagem a cada quadro) ou posição em int com GetFrameTime. Se a dúvida fugir do plano, ajude do mesmo jeito.',
     '- COMPILAÇÃO MANUAL E MAKEFILE (requisito do projeto, material Raylib 7): explique as etapas (gcc -c gera o .o; a ligação junta os .o com a raylib) e o que faz cada opção do GCC. Para o Makefile, você pode mostrar o MODELO GENÉRICO do material e explicar cada linha (regras, TAB, variáveis, $@ $< $^, all, run, clean, .PHONY). Adaptar o Makefile aos arquivos do projeto (SRCS, EXEC, dependências dos .h) é tarefa do aluno: peça que ele faça e revise o MAKEFILE DO PROJETO, se houver, apontando o que falta ou está errado, com perguntas. Lembre que no Windows o comando pode ser mingw32-make e que as linhas de comando começam com TAB.',
     '- Os casos de teste da extensão não servem para jogos: sugira testar jogando, com printf no terminal ou DrawText com os valores das variáveis na tela.',
     '- Não há videoaulas sobre a raylib: indique a parte do material e os exemplos oficiais citados nela.',
+].join('\n');
+
+const MAX_HISTORICO_NO_CONTEXTO = 8;
+
+/**
+ * No projeto do jogo, acrescentado a toda resposta: o tutor atualiza o
+ * projeto-do-jogo.md para a próxima conversa continuar do mesmo ponto.
+ */
+export const ATUALIZAR_DIARIO = [
+    'DIÁRIO DO PROJETO: o arquivo projeto-do-jogo.md guarda onde o aluno parou, para a próxima conversa (talvez em outro computador) continuar do mesmo ponto.',
+    '- Se a conversa está começando e há "Onde o aluno parou", retome a partir dali.',
+    '- No FINAL da resposta, depois de todo o texto e dos outros blocos, se algo mudou nesta conversa (o aluno fez, decidiu, travou ou resolveu algo), escreva este bloco só com as linhas que mudaram:',
+    '<!--DIARIO',
+    'onde parei: uma ou duas frases: o que o aluno já fez na etapa atual e qual é o próximo passo',
+    'decisao: uma decisão que o ALUNO tomou (ex.: "struct Nave em nave.h, com posicao, velocidade e vidas")',
+    'problema: um problema que ficou em aberto',
+    'resolvido: um problema da lista que foi resolvido (com o mesmo texto)',
+    'historico: o que avançou, em até 10 palavras',
+    '-->',
+    'Anote o que o aluno fez ou decidiu, e não o que você sugeriu e ele ainda não fez. Não coloque o bloco dentro de ``` e não fale dele no texto. Se nada mudou, não escreva o bloco.',
 ].join('\n');
 
 export function instrucaoDoComando(comando: string | undefined): string | undefined {
@@ -270,6 +310,19 @@ export function montarContexto(material: Material, aulas: Aula[], aluno: Context
             partes.push('## ETAPAS DO DESENVOLVIMENTO (o aluno marca no painel as que terminou)\n' + aluno.jogo.etapas
                 .map((e, i) => `${e.feita ? '✅' : '⬜'} ${i + 1}. ${e.texto}${i === atual ? '  ← ETAPA ATUAL' : ''}`).join('\n')
                 + (atual < 0 ? '\n(todas as etapas foram marcadas como feitas)' : ''));
+        }
+        const { ondeParei, decisoes = [], problemas = [], historico = [], mapa } = aluno.jogo;
+        const salvo = [
+            ondeParei ? `### Onde o aluno parou\n${ondeParei}` : '',
+            decisoes.length ? `### Decisões já tomadas pelo aluno (não as contradiga sem motivo)\n${decisoes.map(d => `- ${d}`).join('\n')}` : '',
+            problemas.length ? `### Problemas em aberto\n${problemas.map(p => `- ${p}`).join('\n')}` : '',
+            historico.length ? `### Últimos registros do histórico\n${historico.slice(-MAX_HISTORICO_NO_CONTEXTO).map(h => `- ${h}`).join('\n')}` : '',
+        ].filter(Boolean);
+        if (salvo.length > 0) {
+            partes.push('## DIÁRIO DO PROJETO (projeto-do-jogo.md, salvo da última vez)\n' + salvo.join('\n\n'));
+        }
+        if (mapa) {
+            partes.push('## MAPA DO CÓDIGO (gerado pela extensão a partir dos .c e .h da pasta do jogo)\n' + mapa);
         }
     }
     if (aluno.codigo) {
